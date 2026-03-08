@@ -53,4 +53,3 @@ python manage.py runserver
 
 ---
 
-**Próximo passo:** Agora é só salvar isso no seu `README.md` e rodar os comandos do Git (`git add .`, `git commit -m "docs: atualiza README"` e `git push origin main`). Posso considerar essa missão de infraestrutura 100% concluída para a gente começar a criar o primeiro App do Django?
