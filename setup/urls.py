@@ -15,8 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include # Aggiungi 'include' qui!
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Diciamo a Django di reindirizzare tutta la home principale verso l'app dashboard.
+    path('', include('dashboard.urls')), 
 ]
