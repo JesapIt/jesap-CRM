@@ -1,0 +1,67 @@
+{% extends "dashboard/base_figma.html" %}
+
+{% block title %}JESAP CRM - Leads{% endblock %}
+
+{% block content %}
+  <section class="page">
+    <header class="page__header">
+      <h1 class="page__title">LEADS</h1>
+    </header>
+
+    <div class="toolbar">
+      <label class="search" aria-label="Ricerca">
+        <input class="search__input" type="search" placeholder="Search" />
+        <span class="search__icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
+            <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </span>
+      </label>
+
+      <div class="sort">
+        <span class="sort__label">Sort by</span>
+        <button class="sort__button" type="button">
+          <span>Nome</span>
+          <span class="sort__chev" aria-hidden="true"></span>
+        </button>
+        <button class="icon-button icon-button--small" type="button" aria-label="Vista">
+          <span class="grid-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Nome cliente</th>
+            <th>Stato Lead</th>
+            <th>Verbali</th>
+            <th>Data Completamento</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+          </tr>
+          <tr>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+          </tr>
+          <tr>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+            <td>Body</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
