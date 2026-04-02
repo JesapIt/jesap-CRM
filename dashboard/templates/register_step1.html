@@ -1,0 +1,16 @@
+<h2>Registrazione Socio</h2>
+{% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+        <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
+<form method="POST">
+    {% csrf_token %}
+    <label>Email Junior Enterprise:</label>
+    <input type="email" name="email" placeholder="nome.cognome@jesap.it" required>
+    <button type="submit">Verifica Email</button>
+</form>
+<p>Hai già un account? <a href="{% url 'login' %}">Accedi</a></p>
