@@ -1,10 +1,9 @@
 from django.contrib import admin
-from django.urls import path
-from dashboard import views # Importiamo le logiche dalla dashboard
+from django.urls import path, include  # <-- Make sure 'include' is imported here!
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', views.home, name='home'),
-    path('login/', views.login_view, name='login'),
-    path('register/', views.register_view, name='register'),
+    
+    # This tells Django: "Send all other web traffic to the dashboard app's URLs"
+    path('', include('dashboard.urls')), 
 ]

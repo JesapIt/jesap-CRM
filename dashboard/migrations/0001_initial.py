@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
                 ('email', models.EmailField(max_length=254, unique=True)),
             ],
             options={
-                'db_table': 'soci',
+                'db_table': 'SOCI',
                 'managed': False,
             },
         ),
