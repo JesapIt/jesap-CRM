@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{% static 'dashboard/css/figma.css' %}" />
+    <link rel="stylesheet" href="{% static 'dashboard/css/figma.css' %}?v=2" />
     {% block head %}{% endblock %}
   </head>
   <body>
@@ -17,12 +17,12 @@
         <div class="topbar__inner">
           <a class="brand" href="{% url 'home' %}" aria-label="JESAP CRM Home">
             <span class="brand__mark" aria-hidden="true">
-              <svg width="44" height="28" viewBox="0 0 88 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M16 28c10-14 24-22 38-22 6 0 12 1 18 4 3 1 6 3 10 6-5 1-10 3-14 5-8 4-13 10-14 17 0 2 0 4 1 6-3-4-9-9-18-9-8 0-15 4-21 11-5-6-7-12-7-18z" fill="currentColor" opacity=".18"/>
-                <path d="M9 21c6-10 17-16 29-16 7 0 13 2 19 5 4 2 8 5 12 9-7 1-14 3-20 6-9 5-14 12-14 21 0 3 1 6 2 9-6-8-14-12-24-12-8 0-15 3-21 9-2-4-3-8-3-12 0-6 2-13 5-19z" fill="currentColor"/>
-                <path d="M79 12c-6 0-12 2-18 6 4 0 7 1 10 2 4 1 7 3 9 5 4-2 6-5 7-8-2-3-5-5-8-5z" fill="currentColor" opacity=".55"/>
-                <path d="M26 8c-5 0-9 1-13 4 2 6 6 11 12 15 3-6 8-10 14-13-4-4-9-6-13-6z" fill="currentColor" opacity=".55"/>
-              </svg>
+              <img
+                class="brand__mark-img"
+                src="{% static 'dashboard/images/jesap_brand_logo.png' %}?v=2"
+                alt=""
+                decoding="async"
+              />
             </span>
           </a>
 
