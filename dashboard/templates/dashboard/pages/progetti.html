@@ -35,35 +35,27 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Nome</th>
-            <th>Data Inizio</th>
-            <th>Data Fine</th>
-            <th>Risorse</th>
-            <th>Contratti</th>
+            <th>Nome progetto</th>
+            <th>Data inizio</th>
+            <th>Data fine contratto</th>
+            <th>Risorsa 1</th>
+            <th>Area di pertinenza</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>CRM</td>
-            <td>13/02/2026</td>
-            <td>--/--/----</td>
-            <td><a class="table__link" href="#">Vedere</a></td>
-            <td><a class="table__link" href="#">Vedere</a></td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
+          {% for progetto in progetti %}
+            <tr>
+              <td>{{ progetto.nome_progetto }}</td>
+              <td>{{ progetto.data_inizio }}</td>
+              <td>{{ progetto.data_fine_contratto }}</td>
+              <td>{{ progetto.risorsa_1 }}</td>
+              <td>{{ progetto.area_di_pertinenza }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5">Nessun progetto disponibile.</td>
+            </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
