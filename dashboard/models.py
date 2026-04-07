@@ -135,3 +135,10 @@ class Soci(models.Model):
     class Meta:
         managed = False
         db_table = 'SOCI'
+
+
+class Socio(Soci):
+    """Compat alias for code that imports `Socio`."""
+
+    class Meta:
+        proxy = True
