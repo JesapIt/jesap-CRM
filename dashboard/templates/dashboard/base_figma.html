@@ -8,19 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{% static 'dashboard/css/figma.css' %}" />
-    <style>
-      /* MODIFICA DI PRECISIONE: Aggiungiamo CSS per far stare bene il nuovo logo */
-      .brand__mark {
-        display: flex;
-        align-items: center;
-        height: 100%; /* Si adatta all'altezza della topbar */
-      }
-      .brand__image {
-        max-height: 50px; /* Imposta l'altezza massima per non deformare la topbar */
-        width: auto; /* Mantiene le proporzioni originali del logo */
-      }
-    </style>
+    <link rel="stylesheet" href="{% static 'dashboard/css/figma.css' %}?v=2" />
     {% block head %}{% endblock %}
   </head>
   <body>
@@ -29,7 +17,12 @@
         <div class="topbar__inner">
           <a class="brand" href="{% url 'home' %}" aria-label="JESAP CRM Home">
             <span class="brand__mark" aria-hidden="true">
-              <img src="{% static 'dashboard/images/jesap_logo.png' %}" alt="JESAP Logo" class="brand__image">
+              <img
+                class="brand__mark-img"
+                src="{% static 'dashboard/images/jesap_brand_logo.png' %}?v=2"
+                alt=""
+                decoding="async"
+              />
             </span>
           </a>
 
