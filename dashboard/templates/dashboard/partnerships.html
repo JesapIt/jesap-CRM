@@ -7,59 +7,83 @@
     <header class="page__header">
       <h1 class="page__title">PARTNERSHIPS</h1>
     </header>
+    <div style="display: flex; gap: 15px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px;">
+      
+      {% if current_tab == 'non_finalizzate' %}
+        <a href="?tab=non_finalizzate" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
+          NON FINALIZZATE
+        </a>
+      {% else %}
+        <a href="?tab=non_finalizzate" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
+          NON FINALIZZATE
+        </a>
+      {% endif %}
 
-    <div class="toolbar">
-      <label class="search" aria-label="Ricerca">
-        <input class="search__input" type="search" placeholder="Search" />
-        <span class="search__icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </span>
-      </label>
+      {% if current_tab == 'partnership' %}
+        <a href="?tab=partnership" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
+          PARTNERSHIP
+        </a>
+      {% else %}
+        <a href="?tab=partnership" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
+          PARTNERSHIP
+        </a>
+      {% endif %}
 
-      <div class="sort">
-        <span class="sort__label">Sort by</span>
-        <button class="sort__button" type="button">
-          <span>Nome</span>
-          <span class="sort__chev" aria-hidden="true"></span>
-        </button>
-        <button class="icon-button icon-button--small" type="button" aria-label="Vista">
-          <span class="grid-icon" aria-hidden="true"></span>
-        </button>
-      </div>
+      {% if current_tab == 'lead' %}
+        <a href="?tab=lead" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
+          LEAD PARTNERSHIP
+        </a>
+      {% else %}
+        <a href="?tab=lead" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
+          LEAD PARTNERSHIP
+        </a>
+      {% endif %}
+
     </div>
+
+
 
     <div class="table-card">
       <table class="table">
         <thead>
           <tr>
+            <th>ID</th>
             <th>Nome Azienda</th>
-            <th>Contratti</th>
-            <th>Verbali</th>
-            <th>Stato Partnership</th>
+            <th>Status</th>
+            <th>Contatti</th>
+            <th>Cartella Drive</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
+          {% if dati_tabella %}
+            {% for p in dati_tabella %}
+            <tr>
+              <td><strong>{{ p.id }}</strong></td>
+              <td>{{ p.partnership|default:"-" }}</td>
+              <td>
+                <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                  {{ p.status_partnership|default:"-" }}
+                </span>
+              </td>
+              <td>{{ p.contatti|default:"N/A" }}</td>
+              <td>
+                {% if p.cartella_sul_drive %}
+                  <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
+                    📁 Apri Drive
+                  </a>
+                {% else %}
+                  <span style="color: #9CA3AF;">Nessun link</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">
+                Nessun dato presente in questa sezione.
+              </td>
+            </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>

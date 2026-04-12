@@ -142,3 +142,60 @@ class Socio(Soci):
 
     class Meta:
         proxy = True
+from django.db import models
+
+class Eventi(models.Model):
+    id = models.TextField(db_column='ID', primary_key=True)
+    # ... (tutto il resto del tuo codice Eventi rimane uguale)
+    class Meta:
+        managed = False
+        db_table = 'EVENTI'
+
+class Formazioni(models.Model):
+    # ... (tutto il tuo codice Formazioni rimane uguale)
+    class Meta:
+        managed = False
+        db_table = 'FORMAZIONI'
+
+class Progetti(models.Model):
+    # ... (tutto il tuo codice Progetti rimane uguale)
+    class Meta:
+        managed = False
+        db_table = 'PROGETTI'
+
+class Soci(models.Model):
+    # ... (tutto il tuo codice Soci rimane uguale)
+    class Meta:
+        managed = False
+        db_table = 'SOCI'
+
+class Socio(Soci):
+    class Meta:
+        proxy = True
+
+# ==========================================
+# NUOVO MODELLO AGGIUNTO: PARTNERSHIP
+# ==========================================
+class Partnership(models.Model):
+    id = models.TextField(db_column='ID', primary_key=True)
+    partnership = models.TextField(db_column='Partnership', blank=True, null=True)
+    tipologia = models.TextField(db_column='Tipologia', blank=True, null=True)
+    oggetto_primario = models.TextField(db_column='Oggetto primario della partnership', blank=True, null=True)
+    status_partnership = models.TextField(db_column='Status partnership', blank=True, null=True)
+    data_firma = models.TextField(db_column='Data firma', blank=True, null=True)
+    anno = models.FloatField(db_column='ANNO', blank=True, null=True)
+    durata = models.TextField(db_column='Durata', blank=True, null=True)
+    rinnovo = models.TextField(db_column='Rinnovo', blank=True, null=True)
+    data_ultimo_rinnovo = models.TextField(db_column='Data ultimo rinnovo', blank=True, null=True)
+    data_fine_prevista = models.TextField(db_column='Data fine prevista', blank=True, null=True)
+    numero_progetti = models.TextField(db_column='Numero di progetti prodotti dalle Partnership', blank=True, null=True)
+    numero_partecipanti = models.TextField(db_column='Numero di partecipanti', blank=True, null=True)
+    contatti = models.TextField(db_column='Contatti', blank=True, null=True)
+    cartella_sul_drive = models.TextField(db_column='Cartella sul drive', blank=True, null=True)
+    vantaggi_partner = models.TextField(db_column='Vantaggi partner', blank=True, null=True)
+    compenso_economico = models.TextField(db_column='Compenso economico', blank=True, null=True)
+    url_cartella_drive = models.TextField(db_column='Url cartella drive', blank=True, null=True)
+
+    class Meta:
+        managed = False  # Indica a Django di non toccare lo schema (gestito da Supabase)
+        db_table = 'PARTNERSHIP'

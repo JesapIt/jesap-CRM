@@ -3,78 +3,214 @@
 {% block title %}JESAP CRM - Progetti{% endblock %}
 
 {% block content %}
+  <style>
+    /* UI & Animazioni */
+    .progetti-row { transition: background-color 0.2s ease; cursor: pointer; }
+    .progetti-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+    .progetti-row.expanded { background-color: rgba(0, 0, 0, 0.02); }
+
+    .progetti-details-row { display: none; }
+    .progetti-row.expanded + .progetti-details-row { display: table-row; }
+
+    .progetti-details-wrap {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transform: translateY(-4px);
+      transition: max-height 260ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 180ms ease, transform 180ms ease;
+      will-change: max-height, opacity, transform;
+    }
+    .progetti-row.expanded + .progetti-details-row .progetti-details-wrap { opacity: 1; transform: translateY(0); }
+    .progetti-chevron { display: inline-flex; transition: transform 160ms ease; }
+    .progetti-row.expanded .progetti-chevron { transform: rotate(180deg); }
+
+    /* Sorting UI */
+    th.progetti-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+    .progetti-sort__inner { display: inline-flex; align-items: center; gap: 8px; }
+    .progetti-sort__chev { display: inline-flex; transition: transform 160ms ease, opacity 160ms ease; opacity: 0.3; }
+    th.progetti-sort:hover .progetti-sort__chev { opacity: 0.7; }
+    th.is-sorted .progetti-sort__chev { opacity: 1; }
+    th.is-sorted.is-desc .progetti-sort__chev { transform: rotate(180deg); }
+    
+    .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
+    .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+  </style>
+
   <section class="page">
     <header class="page__header">
       <h1 class="page__title">PROGETTI</h1>
     </header>
 
-    <div class="toolbar">
-      <form class="search-form" method="get" action="" role="search">
+    <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+      
+      <form class="search-form" method="get" action="" role="search" style="display: flex; gap: 12px; align-items: center;">
         <label class="search" for="progetti-search-q">
-          <span class="visually-hidden">Cerca per nome progetto</span>
-          <input
-            id="progetti-search-q"
-            class="search__input"
-            type="search"
-            name="q"
-            value="{{ search_query }}"
-            placeholder="Cerca per nome progetto"
-            autocomplete="off"
-          />
-          <button type="submit" class="search__icon search__submit" aria-label="Cerca">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
-              <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
+          <input id="progetti-search-q" class="search__input" type="search" name="q" value="{% if search_query %}{{ search_query }}{% endif %}" placeholder="Cerca progetto..." autocomplete="off" />
+          <button type="submit" class="search__icon search__submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg>
           </button>
         </label>
+
+        <select id="progetti-stato" class="search__input" name="stato" style="max-width: 200px;">
+          <option value="">Tutti gli stati</option>
+          {% for s in stati %}
+            {% if s and s != 'None' %}<option value="{{ s }}" {% if s == stato_filter %}selected{% endif %}>{{ s }}</option>{% endif %}
+          {% endfor %}
+        </select>
+
+        <button type="submit" class="sort__button"><span>Applica</span></button>
       </form>
 
-      <div class="sort">
-        <span class="sort__label">Sort by</span>
-        <button class="sort__button" type="button">
-          <span>Nome</span>
-          <span class="sort__chev" aria-hidden="true"></span>
-        </button>
-        <button class="icon-button icon-button--small" type="button" aria-label="Vista">
-          <span class="grid-icon" aria-hidden="true"></span>
+      <div class="top-sort-controls">
+        <span class="sort__label">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select">
+          <option value="progetto">Nome</option>
+          <option value="stato">Stato</option>
+          <option value="pm">PM</option>
+          <option value="data_inizio">Inizio</option>
+          <option value="fatturato">Fatturato</option>
+        </select>
+        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
         </button>
       </div>
     </div>
 
     <div class="table-card">
-      <table class="table">
+      <table class="table" id="progetti-table">
         <thead>
           <tr>
-            <th>Nome progetto</th>
-            <th>Data inizio</th>
-            <th>Data fine contratto</th>
-            <th>Risorsa 1</th>
-            <th>Area di pertinenza</th>
+            <th class="progetti-sort is-sorted is-asc" data-sort-key="progetto" data-sort-type="text">Progetto</th>
+            <th class="progetti-sort" data-sort-key="stato" data-sort-type="text">Stato</th>
+            <th class="progetti-sort" data-sort-key="pm" data-sort-type="text">PM</th>
+            <th class="progetti-sort" data-sort-key="provenienza" data-sort-type="text">Provenienza</th>
+            <th class="progetti-sort" data-sort-key="data_inizio" data-sort-type="text">Inizio</th>
+            <th class="progetti-sort" data-sort-key="data_fine" data-sort-type="text">Fine</th>
+            <th class="progetti-sort" data-sort-key="fatturato" data-sort-type="number">Fatturato</th>
+            <th></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="table-body">
           {% for progetto in progetti %}
-            <tr>
-              <td>{{ progetto.nome_progetto }}</td>
-              <td>{{ progetto.data_inizio }}</td>
-              <td>{{ progetto.data_fine_contratto }}</td>
-              <td>{{ progetto.risorsa_1 }}</td>
-              <td>{{ progetto.area_di_pertinenza }}</td>
-            </tr>
+            {% if progetto.nome_progetto and progetto.nome_progetto != 'None' and progetto.nome_progetto != 'null' %}
+              
+              <tr class="progetti-row" aria-expanded="false">
+                <td data-sort-key="progetto">{{ progetto.nome_progetto }}</td>
+                <td data-sort-key="stato">{% if progetto.stato and progetto.stato != 'None' %}{{ progetto.stato }}{% else %}-{% endif %}</td>
+                <td data-sort-key="pm">{% if progetto.pm and progetto.pm != 'None' %}{{ progetto.pm }}{% else %}-{% endif %}</td>
+                <td data-sort-key="provenienza">{% if progetto.provenienza and progetto.provenienza != 'None' %}{{ progetto.provenienza }}{% else %}-{% endif %}</td>
+                <td data-sort-key="data_inizio">{% if progetto.data_inizio and progetto.data_inizio != 'None' %}{{ progetto.data_inizio }}{% else %}-{% endif %}</td>
+                <td data-sort-key="data_fine">{% if progetto.data_fine_contratto and progetto.data_fine_contratto != 'None' %}{{ progetto.data_fine_contratto }}{% else %}-{% endif %}</td>
+                <td data-sort-key="fatturato">
+                  {% if progetto.fatturato_senza_iva_field and progetto.fatturato_senza_iva_field != 'None' and progetto.fatturato_senza_iva_field != 'null' %}
+                    <span class="js-money" data-money="{{ progetto.fatturato_senza_iva_field }}">{{ progetto.fatturato_senza_iva_field }}</span>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td style="text-align: right;">
+                  <span class="progetti-chevron"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg></span>
+                </td>
+              </tr>
+
+              <tr class="progetti-details-row">
+                <td colspan="8" style="padding: 0;">
+                  <div class="progetti-details-wrap">
+                    <div style="padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                      {% if progetto.pm and progetto.pm != 'None' %}<div><strong>PM:</strong> {{ progetto.pm }}</div>{% endif %}
+                      
+                      {% if progetto.costi and progetto.costi != 'None' %}
+                        <div><strong>Costi:</strong> <span class="js-money" data-money="{{ progetto.costi }}">{{ progetto.costi }}</span></div>
+                      {% endif %}
+                      {% if progetto.profitti and progetto.profitti != 'None' %}
+                        <div><strong>Profitti:</strong> <span class="js-money" data-money="{{ progetto.profitti }}">{{ progetto.profitti }}</span></div>
+                      {% endif %}
+
+                      {% with r1=progetto.risorsa_1 r2=progetto.risorsa_2 r3=progetto.risorsa_3 %}
+                        {% if r1 and r1 != 'None' %}
+                        <div><strong>Risorse:</strong> {{ r1 }}{% if r2 %}, {{ r2 }}{% endif %}{% if r3 %}, {{ r3 }}{% endif %}</div>
+                        {% endif %}
+                      {% endwith %}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              
+            {% endif %}
           {% empty %}
-            <tr>
-              <td colspan="5">
-                {% if search_query %}
-                  Nessun progetto trovato per «{{ search_query }}».
-                {% else %}
-                  Nessun progetto disponibile.
-                {% endif %}
-              </td>
-            </tr>
+            <tr><td colspan="8">Nessun progetto trovato.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </section>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const tbody = document.getElementById("table-body");
+      const moneyFormatter = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+
+      // 1. Formattazione Valuta Blindata
+      function formatCurrency() {
+        document.querySelectorAll(".js-money").forEach(el => {
+          const raw = el.getAttribute("data-money");
+          if (!raw || raw === 'None') return;
+          const n = parseFloat(String(raw).replace(',', '.').replace(/[^0-9.-]+/g, ""));
+          if (!isNaN(n)) el.textContent = moneyFormatter.format(n);
+        });
+      }
+      formatCurrency();
+
+      // 2. Toggle Dettagli
+      tbody.addEventListener("click", (e) => {
+        const row = e.target.closest(".progetti-row");
+        if (!row) return;
+        const detailsRow = row.nextElementSibling;
+        if (!detailsRow || !detailsRow.classList.contains("progetti-details-row")) return;
+        
+        const wrap = detailsRow.querySelector(".progetti-details-wrap");
+        const isExpanded = row.classList.toggle("expanded");
+        wrap.style.maxHeight = isExpanded ? wrap.scrollHeight + "px" : "0px";
+      });
+
+      // 3. Sorting Logica Unificata
+      const topSelect = document.getElementById("top-sort-select");
+      const topDirBtn = document.getElementById("top-sort-dir");
+      let currentDir = "asc";
+
+      function doSort(key, dir) {
+        const type = key === "fatturato" ? "number" : "text";
+        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+
+        const rows = Array.from(tbody.children).filter(r => r.classList.contains("progetti-row"));
+        const pairs = rows.map(r => ({
+          master: r,
+          detail: r.nextElementSibling,
+          val: (r.querySelector(`[data-sort-key="${key}"]`)?.textContent.trim() || "").toLowerCase()
+        }));
+
+        pairs.sort((a, b) => {
+          let vA = a.val, vB = b.val;
+          if (type === "number") {
+            vA = parseFloat(vA.replace(/[^0-9.-]+/g, "")) || 0;
+            vB = parseFloat(vB.replace(/[^0-9.-]+/g, "")) || 0;
+          }
+          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+        });
+
+        const frag = document.createDocumentFragment();
+        pairs.forEach(p => { frag.appendChild(p.master); if (p.detail) frag.appendChild(p.detail); });
+        tbody.appendChild(frag);
+      }
+
+      topSelect.addEventListener("change", (e) => doSort(e.target.value, currentDir));
+      topDirBtn.addEventListener("click", () => {
+        currentDir = currentDir === "asc" ? "desc" : "asc";
+        doSort(topSelect.value, currentDir);
+      });
+      
+      // Sort iniziale per Nome
+      doSort("progetto", "asc");
+    });
+  </script>
 {% endblock %}
