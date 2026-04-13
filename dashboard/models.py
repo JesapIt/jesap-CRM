@@ -164,4 +164,4 @@ class Partnership(models.Model):
 
     class Meta:
         managed = False
-        db_table = 'partnership'  # Ho messo tutto minuscolo assumendo che su Supabase si chiami così
+        db_table = 'PARTNERSHIP'  # Ho messo tutto minuscolo assumendo che su Supabase si chiami così
