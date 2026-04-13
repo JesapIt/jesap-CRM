@@ -7,7 +7,7 @@
     <header class="page__header">
       <h1 class="page__title">PARTNERSHIPS</h1>
     </header>
-    <div style="display: flex; gap: 15px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px;">
+    <div style="display: flex; justify-content: center; gap: 15px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px;">
       
       {% if current_tab == 'non_finalizzate' %}
         <a href="?tab=non_finalizzate" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
@@ -41,11 +41,10 @@
 
     </div>
 
-
-
     <div class="table-card">
       <table class="table">
         <thead>
+          {% if current_tab == 'partnership' %}
           <tr>
             <th>ID</th>
             <th>Nome Azienda</th>
@@ -53,36 +52,65 @@
             <th>Contatti</th>
             <th>Cartella Drive</th>
           </tr>
+          {% elif current_tab == 'non_finalizzate' %}
+          <tr>
+            <th>Realtà</th>
+            <th>Contatti</th>
+            <th>Periodo</th>
+            <th>Anno</th>
+            <th>Cartella</th>
+          </tr>
+          {% endif %}
         </thead>
         <tbody>
-          {% if dati_tabella %}
-            {% for p in dati_tabella %}
-            <tr>
-              <td><strong>{{ p.id }}</strong></td>
-              <td>{{ p.partnership|default:"-" }}</td>
-              <td>
-                <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                  {{ p.status_partnership|default:"-" }}
-                </span>
-              </td>
-              <td>{{ p.contatti|default:"N/A" }}</td>
-              <td>
-                {% if p.cartella_sul_drive %}
-                  <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
-                    📁 Apri Drive
-                  </a>
-                {% else %}
-                  <span style="color: #9CA3AF;">Nessun link</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">
-                Nessun dato presente in questa sezione.
-              </td>
-            </tr>
+          {% if current_tab == 'partnership' %}
+            {% if partnerships %}
+              {% for p in partnerships %}
+              <tr>
+                <td><strong>{{ p.id }}</strong></td>
+                <td>{{ p.partnership|default:"-" }}</td>
+                <td>
+                  <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                    {{ p.status_partnership|default:"-" }}
+                  </span>
+                </td>
+                <td>{{ p.contatti|default:"N/A" }}</td>
+                <td>
+                  {% if p.cartella_sul_drive %}
+                    <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
+                      📁 Apri Drive
+                    </a>
+                  {% else %}
+                    <span style="color: #9CA3AF;">Nessun link</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">
+                  Nessun dato presente in questa sezione.
+                </td>
+              </tr>
+            {% endif %}
+          {% elif current_tab == 'non_finalizzate' %}
+            {% if dati_tabella %}
+              {% for p in dati_tabella %}
+              <tr>
+                <td>{{ p.realta }}</td>
+                <td>{{ p.contatti|default:"N/A" }}</td>
+                <td>{{ p.periodo|default:"-" }}</td>
+                <td>{{ p.anno|default:"-" }}</td>
+                <td>{{ p.cartella|default:"-" }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">
+                  Nessun dato presente in questa sezione.
+                </td>
+              </tr>
+            {% endif %}
           {% endif %}
         </tbody>
       </table>

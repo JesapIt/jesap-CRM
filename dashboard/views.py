@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect
+﻿from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 # These are for generating secure email links
 from django.core.mail import send_mail
 from django.core import signing
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
+from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
 from django.conf import settings
 
 # --- 1. LOGIN (username o email + password) ---
@@ -141,54 +141,45 @@ def leads(request):
 
 @login_required(login_url="login")
 def partnerships(request):
-    return render(request, "dashboard/partnerships.html")
+    # Gestione delle 3 schede (Tabs) tramite l'URL (es: ?tab=partnership)
+    # Se non c'è il parametro tab, di default apre "partnership"
+    tab = request.GET.get("tab", "partnership")
+    
+    # Prepariamo la lista dati in base al tab selezionato
+    if tab == "partnership":
+        partnerships_list = Partnership.objects.all().order_by('partnership')
+        context = {
+            "current_tab": tab,
+            "dati_tabella": partnerships_list,
+            "partnerships": partnerships_list,
+        }
+    elif tab == "non_finalizzate":
+        # Busca dados da tabela PARTNERSHIP_NON_FIN
+        dati_tabella = PartnershipNonFin.objects.all().order_by('realta')
+        context = {
+            "current_tab": tab,
+            "dati_tabella": dati_tabella
+        }
+    elif tab == "lead":
+        # Qui andranno i lead partnership
+        dati_tabella = []
+        context = {
+            "current_tab": tab,
+            "dati_tabella": dati_tabella
+        }
+    else:
+        dati_tabella = []
+        context = {
+            "current_tab": tab,
+            "dati_tabella": dati_tabella
+        }
+
+    return render(request, "dashboard/partnerships.html", context)
 
 @login_required(login_url="login")
 def progetti(request):
-    qs = Progetti.objects.all()
-
-    q = (request.GET.get("q") or "").strip()
-    stato = (request.GET.get("stato") or "").strip()
-
-    if q:
-        qs = qs.filter(
-            Q(nome_progetto__icontains=q)
-            | Q(stato__icontains=q)
-            | Q(pm__icontains=q)
-            | Q(provenienza__icontains=q)
-        )
-
-    if stato:
-        qs = qs.filter(stato__iexact=stato)
-
-    qs = qs.order_by("nome_progetto")
-
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get("page") or 1)
-
-    stati = (
-        Progetti.objects.exclude(stato__isnull=True)
-        .exclude(stato__exact="")
-        .values_list("stato", flat=True)
-        .distinct()
-        .order_by("stato")
-    )
-
-    preserved = request.GET.copy()
-    preserved.pop("page", None)
-    preserved_qs = preserved.urlencode()
-    if preserved_qs:
-        preserved_qs = preserved_qs + "&"
-
-    context = {
-        "page_obj": page_obj,
-        "progetti": page_obj.object_list,
-        "search_query": q,
-        "stato_filter": stato,
-        "stati": stati,
-        "querystring": preserved_qs,
-    }
-    return render(request, "dashboard/progetti.html", context)
+    progetti_list = Progetti.objects.all()
+    return render(request, "dashboard/progetti.html", {"progetti": progetti_list})
 
 @login_required(login_url="login")
 def eventi(request):
@@ -204,27 +195,3 @@ def formazioni(request):
 def soci(request):
     soci_list = Soci.objects.all()
     return render(request, "dashboard/pages/soci.html", {"soci": soci_list})
-@login_required(login_url="login")
-def partnerships(request):
-    # Gestione delle 3 schede (Tabs) tramite l'URL (es: ?tab=partnership)
-    # Se non c'è il parametro tab, di default apre "partnership"
-    tab = request.GET.get("tab", "partnership")
-    
-    # Prepariamo la lista dati in base al tab selezionato
-    if tab == "partnership":
-        # Per ora peschiamo tutte le righe dalla tabella PARTNERSHIP
-        dati_tabella = Partnership.objects.all().order_by('partnership')
-    elif tab == "non_finalizzate":
-        # Qui in futuro potrai filtrare, ad es: Partnership.objects.filter(status_partnership="Non finalizzata")
-        dati_tabella = [] 
-    elif tab == "lead":
-        # Qui andranno i lead partnership
-        dati_tabella = []
-    else:
-        dati_tabella = []
-
-    context = {
-        "current_tab": tab,
-        "dati_tabella": dati_tabella
-    }
-    return render(request, "dashboard/partnerships.html", context)

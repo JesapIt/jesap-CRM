@@ -1,5 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 {% load static %}
+{% load dashboard_extras %}
 
 {% block title %}JESAP CRM - Home{% endblock %}
 
@@ -28,7 +29,13 @@
   <section class="hero hero--home">
     <div class="hero__inner">
       <div class="hero__avatar" aria-hidden="true" style="background-image: url('https://ui-avatars.com/api/?name=Admin&background=fff&color=8A3B86'); background-size: cover;"></div>
-      <h1 class="hero__title">Benvenuto nel CRM!</h1>
+      <h1 class="hero__title">
+        {% if user.is_authenticated %}
+          Benvenuto nel CRM, {{ user.username|format_username }}!
+        {% else %}
+          Benvenuto nel CRM!
+        {% endif %}
+      </h1>
     </div>
   </section>
 
