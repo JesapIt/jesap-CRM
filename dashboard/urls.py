@@ -10,6 +10,11 @@ urlpatterns = [
     path('leads/', views.leads, name='leads'),
     path('progetti/', views.progetti, name='progetti'),
     path('partnerships/', views.partnerships, name='partnerships'),
+    
+    # --- CRUD de Partnerships ---
+    path('partnerships/nuova/', views.partnership_create, name='partnership_create'),
+    path('partnerships/<str:pk>/modifica/', views.partnership_update, name='partnership_update'),
+    path('partnerships/<str:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
 
     # Authentication & Registration
     path('login/', views.login_view, name='login'),

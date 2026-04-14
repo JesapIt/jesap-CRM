@@ -1,0 +1,44 @@
+{% extends "dashboard/base_figma.html" %}
+
+{% block title %}JESAP CRM - Elimina Partnership{% endblock %}
+
+{% block content %}
+<section class="page">
+  <header class="page__header">
+    <h1 class="page__title">ELIMINA PARTNERSHIP</h1>
+  </header>
+
+  <div class="confirm-container" style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <h2 style="color: #EF4444; margin-bottom: 16px;">Conferma Eliminazione</h2>
+      <p style="margin-bottom: 16px; color: #374151;">
+        Sei sicuro di voler eliminare questa partnership?
+      </p>
+
+      <div class="partnership-details" style="background: #F9FAFB; padding: 16px; border-radius: 6px; margin-bottom: 24px;">
+        <h3 style="margin-bottom: 8px; color: #1F2937;">Dettagli Partnership:</h3>
+        <p><strong>ID:</strong> {{ partnership.id }}</p>
+        <p><strong>Nome Azienda:</strong> {{ partnership.partnership|default:"-" }}</p>
+        <p><strong>Status:</strong> {{ partnership.status_partnership|default:"-" }}</p>
+        <p><strong>Contatti:</strong> {{ partnership.contatti|default:"-" }}</p>
+      </div>
+
+      <p style="color: #DC2626; font-weight: 600; margin-bottom: 24px;">
+        ⚠️ Questa azione non può essere annullata.
+      </p>
+
+      <form method="post" style="display: inline;">
+        {% csrf_token %}
+        <div class="form-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+          <a href="{% url 'partnerships' %}" class="btn-action" style="text-decoration: none;">
+            Annulla
+          </a>
+          <button type="submit" class="btn-action danger" style="border: none; cursor: pointer;">
+            Elimina
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
