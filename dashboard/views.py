@@ -1,18 +1,25 @@
-from django.shortcuts import render, redirect
+﻿from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Q
 from urllib.parse import urlencode
+from .models import Partnership
+from .forms import PartnershipForm
 
 # These are for generating secure email links
 from django.core.mail import send_mail
 from django.core import signing
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
-from django.conf import settings
+from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
+from django.conf import settings# Adicione este import lá no topo junto com os outros
+from django.contrib.auth.decorators import user_passes_test
+
+# Função que checa se o usuário é um Editor ou um Superusuário
+def is_editor(user):
+    return user.groups.filter(name='Editori').exists() or user.is_superuser
 
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
@@ -141,54 +148,72 @@ def leads(request):
 
 @login_required(login_url="login")
 def partnerships(request):
-    return render(request, "dashboard/partnerships.html")
+    # Captura a tab atual (padrão: partnership)
+    tab = request.GET.get("tab", "partnership")
+    
+    # Captura os parâmetros de busca e filtro
+    search_query = request.GET.get("q", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+    
+    context = {
+        "current_tab": tab,
+        "search_query": search_query,
+        "status_filter": status_filter,
+        "is_editor": is_editor(request.user),
+    }
+    
+    if tab == "partnership":
+        # 1. Busca inicial
+        queryset = Partnership.objects.all().order_by('partnership')
+        
+        # 2. Pega todos os status únicos para popular o dropdown no HTML
+        stati_partnership = Partnership.objects.exclude(
+            status_partnership__isnull=True
+        ).exclude(
+            status_partnership__exact=''
+        ).values_list('status_partnership', flat=True).distinct()
+        
+        context["stati_partnership"] = stati_partnership
+        
+        # 3. Aplica o filtro de busca por texto (Nome ou Contatos, por exemplo)
+        if search_query:
+            queryset = queryset.filter(
+                Q(partnership__icontains=search_query) | 
+                Q(contatti__icontains=search_query)
+            )
+            
+        # 4. Aplica o filtro de status do dropdown
+        if status_filter:
+            queryset = queryset.filter(status_partnership=status_filter)
+            
+        context["partnerships"] = queryset
+        context["dati_tabella"] = queryset
+
+    elif tab == "non_finalizzate":
+        queryset = PartnershipNonFin.objects.all().order_by('realta')
+        
+        # Filtro de busca na aba "non_finalizzate"
+        if search_query:
+            queryset = queryset.filter(
+                Q(realta__icontains=search_query) | 
+                Q(contatti__icontains=search_query)
+            )
+            
+        context["dati_tabella"] = queryset
+
+    elif tab == "lead":
+        # Lógica futura para lead partnership
+        context["dati_tabella"] = []
+
+    else:
+        context["dati_tabella"] = []
+
+    return render(request, "dashboard/partnerships.html", context)
 
 @login_required(login_url="login")
 def progetti(request):
-    qs = Progetti.objects.all()
-
-    q = (request.GET.get("q") or "").strip()
-    stato = (request.GET.get("stato") or "").strip()
-
-    if q:
-        qs = qs.filter(
-            Q(nome_progetto__icontains=q)
-            | Q(stato__icontains=q)
-            | Q(pm__icontains=q)
-            | Q(provenienza__icontains=q)
-        )
-
-    if stato:
-        qs = qs.filter(stato__iexact=stato)
-
-    qs = qs.order_by("nome_progetto")
-
-    paginator = Paginator(qs, 20)
-    page_obj = paginator.get_page(request.GET.get("page") or 1)
-
-    stati = (
-        Progetti.objects.exclude(stato__isnull=True)
-        .exclude(stato__exact="")
-        .values_list("stato", flat=True)
-        .distinct()
-        .order_by("stato")
-    )
-
-    preserved = request.GET.copy()
-    preserved.pop("page", None)
-    preserved_qs = preserved.urlencode()
-    if preserved_qs:
-        preserved_qs = preserved_qs + "&"
-
-    context = {
-        "page_obj": page_obj,
-        "progetti": page_obj.object_list,
-        "search_query": q,
-        "stato_filter": stato,
-        "stati": stati,
-        "querystring": preserved_qs,
-    }
-    return render(request, "dashboard/progetti.html", context)
+    progetti_list = Progetti.objects.all()
+    return render(request, "dashboard/progetti.html", {"progetti": progetti_list})
 
 @login_required(login_url="login")
 def eventi(request):
@@ -204,27 +229,45 @@ def formazioni(request):
 def soci(request):
     soci_list = Soci.objects.all()
     return render(request, "dashboard/pages/soci.html", {"soci": soci_list})
-@login_required(login_url="login")
-def partnerships(request):
-    # Gestione delle 3 schede (Tabs) tramite l'URL (es: ?tab=partnership)
-    # Se non c'è il parametro tab, di default apre "partnership"
-    tab = request.GET.get("tab", "partnership")
-    
-    # Prepariamo la lista dati in base al tab selezionato
-    if tab == "partnership":
-        # Per ora peschiamo tutte le righe dalla tabella PARTNERSHIP
-        dati_tabella = Partnership.objects.all().order_by('partnership')
-    elif tab == "non_finalizzate":
-        # Qui in futuro potrai filtrare, ad es: Partnership.objects.filter(status_partnership="Non finalizzata")
-        dati_tabella = [] 
-    elif tab == "lead":
-        # Qui andranno i lead partnership
-        dati_tabella = []
-    else:
-        dati_tabella = []
 
-    context = {
-        "current_tab": tab,
-        "dati_tabella": dati_tabella
-    }
-    return render(request, "dashboard/partnerships.html", context)
+@user_passes_test(is_editor)
+def partnership_create(request):
+    if request.method == 'POST':
+        form = PartnershipForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Partnership criada com sucesso!")
+            return redirect('partnerships') # Redireciona para a aba principal
+    else:
+        form = PartnershipForm()
+    
+    context = {'form': form, 'azione': 'Nuova'}
+    return render(request, 'dashboard/partnership_form.html', context)
+
+@user_passes_test(is_editor)
+def partnership_update(request, pk):
+    # Tenta achar a partnership pelo ID, se não achar, dá erro 404
+    partnership = get_object_or_404(Partnership, id=pk)
+    
+    if request.method == 'POST':
+        form = PartnershipForm(request.POST, instance=partnership)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Partnership atualizada com sucesso!")
+            return redirect('partnerships') # Redireciona para a aba principal
+    else:
+        form = PartnershipForm(instance=partnership)
+    
+    context = {'form': form, 'azione': 'Modifica'}
+    return render(request, 'dashboard/partnership_form.html', context)
+
+@user_passes_test(is_editor)
+def partnership_delete(request, pk):
+    partnership = get_object_or_404(Partnership, id=pk)
+    
+    if request.method == 'POST':
+        partnership.delete()
+        messages.success(request, "Partnership eliminada com sucesso!")
+        return redirect('partnerships') # Redireciona para a aba principal
+        
+    return render(request, 'dashboard/partnership_confirm_delete.html', {'partnership': partnership})

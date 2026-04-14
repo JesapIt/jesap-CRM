@@ -165,3 +165,15 @@ class Partnership(models.Model):
     class Meta:
         managed = False
         db_table = 'PARTNERSHIP'  # Ho messo tutto minuscolo assumendo che su Supabase si chiami così
+
+
+class PartnershipNonFin(models.Model):
+    realta = models.TextField(db_column='Realtà', primary_key=True)
+    contatti = models.TextField(db_column='Contatti', blank=True, null=True)
+    periodo = models.TextField(db_column='Periodo', blank=True, null=True)
+    anno = models.BigIntegerField(db_column='Anno', blank=True, null=True)
+    cartella = models.TextField(db_column='Cartella', blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'PARTNERSHIP_NON_FIN'

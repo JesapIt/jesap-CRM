@@ -3,89 +3,282 @@
 {% block title %}JESAP CRM - Partnerships{% endblock %}
 
 {% block content %}
+  <style>
+    /* UI & Animazioni (Adaptado de Progetti) */
+    .partner-row { transition: background-color 0.2s ease; cursor: pointer; }
+    .partner-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+
+    /* Estilo das Abas (Tabs) */
+    .tab-button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      background-color: #F1F5F9;
+      color: #64748B;
+      transition: all 0.2s ease;
+    }
+    .tab-button.active {
+      background-color: #6366F1;
+      color: white;
+    }
+
+    /* Estilos dos Novos Botões de Ação (CRUD) */
+    .btn-primary { 
+      background-color: #10B981; 
+      color: white; 
+      padding: 8px 16px; 
+      border-radius: 8px; 
+      text-decoration: none; 
+      font-weight: 600; 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 6px; 
+      border: none; 
+      cursor: pointer; 
+      transition: 0.2s; 
+    }
+    .btn-primary:hover { background-color: #059669; }
+
+    .btn-action { 
+      background-color: #F8FAFC; 
+      color: #475569; 
+      padding: 6px 12px; 
+      border-radius: 6px; 
+      text-decoration: none; 
+      font-weight: 600; 
+      font-size: 0.85rem; 
+      transition: 0.2s; 
+      border: 1px solid #E2E8F0; 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 4px; 
+    }
+    .btn-action:hover { background-color: #E2E8F0; color: #1E293B; }
+    
+    .btn-action.danger { color: #EF4444; background-color: #FEF2F2; border-color: #FCA5A5; }
+    .btn-action.danger:hover { background-color: #FEE2E2; color: #DC2626; }
+
+    /* Sorting UI */
+    th.partner-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+    .partner-sort__inner { display: inline-flex; align-items: center; gap: 8px; }
+    .partner-sort__chev { display: inline-flex; transition: transform 160ms ease, opacity 160ms ease; opacity: 0.3; }
+    th.partner-sort:hover .partner-sort__chev { opacity: 0.7; }
+    th.is-sorted .partner-sort__chev { opacity: 1; }
+    th.is-sorted.is-desc .partner-sort__chev { transform: rotate(180deg); }
+    
+    .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
+    .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+  </style>
+
   <section class="page">
     <header class="page__header">
       <h1 class="page__title">PARTNERSHIPS</h1>
     </header>
-    <div style="display: flex; gap: 15px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px;">
+
+    <div style="display: flex; justify-content: center; gap: 15px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px;">
+      <a href="?tab=non_finalizzate" class="tab-button {% if current_tab == 'non_finalizzate' %}active{% endif %}">
+        NON FINALIZZATE
+      </a>
+      <a href="?tab=partnership" class="tab-button {% if current_tab == 'partnership' %}active{% endif %}">
+        PARTNERSHIP
+      </a>
+      <a href="?tab=lead" class="tab-button {% if current_tab == 'lead' %}active{% endif %}">
+        LEAD PARTNERSHIP
+      </a>
+    </div>
+
+    <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
       
-      {% if current_tab == 'non_finalizzate' %}
-        <a href="?tab=non_finalizzate" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
-          NON FINALIZZATE
-        </a>
-      {% else %}
-        <a href="?tab=non_finalizzate" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
-          NON FINALIZZATE
-        </a>
-      {% endif %}
+      <form class="search-form" method="get" action="" role="search" style="display: flex; gap: 12px; align-items: center;">
+        <input type="hidden" name="tab" value="{{ current_tab }}">
+        
+        <label class="search" for="partner-search-q">
+          <input id="partner-search-q" class="search__input" type="search" name="q" value="{{ search_query|default:'' }}" placeholder="Cerca..." autocomplete="off" />
+          <button type="submit" class="search__icon search__submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg>
+          </button>
+        </label>
 
-      {% if current_tab == 'partnership' %}
-        <a href="?tab=partnership" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
-          PARTNERSHIP
-        </a>
-      {% else %}
-        <a href="?tab=partnership" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
-          PARTNERSHIP
-        </a>
-      {% endif %}
+        {% if current_tab == 'partnership' %}
+        <select id="partner-stato" class="search__input" name="status" style="max-width: 200px;">
+          <option value="">Tutti gli stati</option>
+          {% for s in stati_partnership %}
+            <option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
 
-      {% if current_tab == 'lead' %}
-        <a href="?tab=lead" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #6366F1; color: white;">
-          LEAD PARTNERSHIP
-        </a>
-      {% else %}
-        <a href="?tab=lead" style="padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B;">
-          LEAD PARTNERSHIP
-        </a>
-      {% endif %}
+        <button type="submit" class="sort__button"><span>Applica</span></button>
+      </form>
 
-    </div>
-
-
-
-    <div class="table-card">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Nome Azienda</th>
-            <th>Status</th>
-            <th>Contatti</th>
-            <th>Cartella Drive</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if dati_tabella %}
-            {% for p in dati_tabella %}
-            <tr>
-              <td><strong>{{ p.id }}</strong></td>
-              <td>{{ p.partnership|default:"-" }}</td>
-              <td>
-                <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                  {{ p.status_partnership|default:"-" }}
-                </span>
-              </td>
-              <td>{{ p.contatti|default:"N/A" }}</td>
-              <td>
-                {% if p.cartella_sul_drive %}
-                  <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
-                    📁 Apri Drive
-                  </a>
-                {% else %}
-                  <span style="color: #9CA3AF;">Nessun link</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
+      <div class="top-sort-controls">
+        <span class="sort__label">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select">
+          {% if current_tab == 'partnership' %}
+            <option value="id">ID</option>
+            <option value="nome">Nome Azienda</option>
+            <option value="status">Status</option>
           {% else %}
-            <tr>
-              <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">
-                Nessun dato presente in questa sezione.
-              </td>
-            </tr>
+            <option value="realta">Realtà</option>
+            <option value="anno">Anno</option>
           {% endif %}
-        </tbody>
-      </table>
+        </select>
+        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
+        </button>
+      </div>
     </div>
+
+    <div style="width: 100%;">
+      
+      <div class="table-card" style="width: 100%;">
+        
+        {% if is_editor %}
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px; padding: 16px 16px 0 16px;">
+          <a href="{% url 'partnership_create' %}" class="btn-primary">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+            Nuova Partnership
+          </a>
+        </div>
+        {% endif %}
+
+        <table class="table" id="partner-table">
+          <thead>
+            {% if current_tab == 'partnership' %}
+            <tr>
+              <th class="partner-sort is-sorted is-asc" data-sort-key="id" data-sort-type="number">ID</th>
+              <th class="partner-sort" data-sort-key="nome" data-sort-type="text">Nome Azienda</th>
+              <th class="partner-sort" data-sort-key="status" data-sort-type="text">Status</th>
+              <th class="partner-sort" data-sort-key="contatti" data-sort-type="text">Contatti</th>
+              <th>Cartella Drive</th>
+              {% if is_editor %}
+                <th style="text-align: right;">Azioni</th>
+              {% endif %}
+            </tr>
+            {% elif current_tab == 'non_finalizzate' %}
+            <tr>
+              <th class="partner-sort is-sorted is-asc" data-sort-key="realta" data-sort-type="text">Realtà</th>
+              <th class="partner-sort" data-sort-key="contatti" data-sort-type="text">Contatti</th>
+              <th class="partner-sort" data-sort-key="periodo" data-sort-type="text">Periodo</th>
+              <th class="partner-sort" data-sort-key="anno" data-sort-type="number">Anno</th>
+              <th>Cartella</th>
+            </tr>
+            {% endif %}
+          </thead>
+          <tbody id="table-body">
+            {% if current_tab == 'partnership' %}
+              {% if partnerships %}
+                {% for p in partnerships %}
+                <tr class="partner-row">
+                  <td data-sort-key="id"><strong>{{ p.id }}</strong></td>
+                  <td data-sort-key="nome">{{ p.partnership|default:"-" }}</td>
+                  <td data-sort-key="status">
+                    <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                      {{ p.status_partnership|default:"-" }}
+                    </span>
+                  </td>
+                  <td data-sort-key="contatti">{{ p.contatti|default:"N/A" }}</td>
+                  <td>
+                    {% if p.cartella_sul_drive %}
+                      <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
+                        📁 Apri Drive
+                      </a>
+                    {% else %}
+                      <span style="color: #9CA3AF;">Nessun link</span>
+                    {% endif %}
+                  </td>
+                  {% if is_editor %}
+                  <td style="text-align: right;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                      <a href="{% url 'partnership_update' p.id %}" class="btn-action">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Modifica
+                      </a>
+                      <a href="{% url 'partnership_delete' p.id %}" class="btn-action danger">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Elimina
+                      </a>
+                    </div>
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="6" style="text-align: center; padding: 40px; color: #64748B;">Nessun dato presente in questa sezione.</td>
+                </tr>
+              {% endif %}
+              
+            {% elif current_tab == 'non_finalizzate' %}
+              {% if dati_tabella %}
+                {% for p in dati_tabella %}
+                <tr class="partner-row">
+                  <td data-sort-key="realta">{{ p.realta }}</td>
+                  <td data-sort-key="contatti">{{ p.contatti|default:"N/A" }}</td>
+                  <td data-sort-key="periodo">{{ p.periodo|default:"-" }}</td>
+                  <td data-sort-key="anno">{{ p.anno|default:"-" }}</td>
+                  <td>{{ p.cartella|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="5" style="text-align: center; padding: 40px; color: #64748B;">Nessun dato presente in questa sezione.</td>
+                </tr>
+              {% endif %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div> 
   </section>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const tbody = document.getElementById("table-body");
+      if (!tbody) return;
+
+      const topSelect = document.getElementById("top-sort-select");
+      const topDirBtn = document.getElementById("top-sort-dir");
+      let currentDir = "asc";
+
+      function doSort(key, dir) {
+        if (!key) return;
+        const type = (key === "id" || key === "anno") ? "number" : "text";
+        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+
+        const rows = Array.from(tbody.querySelectorAll(".partner-row"));
+        
+        rows.sort((a, b) => {
+          let cellA = a.querySelector(`[data-sort-key="${key}"]`);
+          let cellB = b.querySelector(`[data-sort-key="${key}"]`);
+          
+          let vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
+          let vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
+
+          if (type === "number") {
+            vA = parseFloat(vA.replace(/[^0-9.-]+/g, "")) || 0;
+            vB = parseFloat(vB.replace(/[^0-9.-]+/g, "")) || 0;
+          }
+          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+        });
+
+        const frag = document.createDocumentFragment();
+        rows.forEach(r => frag.appendChild(r));
+        tbody.appendChild(frag);
+      }
+
+      if (topSelect && topDirBtn) {
+        topSelect.addEventListener("change", (e) => doSort(e.target.value, currentDir));
+        topDirBtn.addEventListener("click", () => {
+          currentDir = currentDir === "asc" ? "desc" : "asc";
+          doSort(topSelect.value, currentDir);
+        });
+
+        if(topSelect.options.length > 0) {
+            doSort(topSelect.value, "asc");
+        }
+      }
+    });
+  </script>
 {% endblock %}
