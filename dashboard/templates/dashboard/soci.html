@@ -1,0 +1,283 @@
+{% extends "dashboard/base_figma.html" %}
+
+{% block title %}JESAP ERP - Soci{% endblock %}
+
+{% block content %}
+  <style>
+    .soci-row { transition: background-color 0.2s ease; }
+    .soci-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+
+    .tab-button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      background-color: #F1F5F9;
+      color: #64748B;
+      transition: all 0.2s ease;
+      font-size: 13px;
+    }
+    .tab-button.active {
+      background-color: #6366F1;
+      color: white;
+    }
+
+    .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
+    .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+
+    .btn-action {
+      background-color: #F8FAFC; color: #475569; padding: 6px 12px; border-radius: 6px;
+      text-decoration: none; font-weight: 600; font-size: 0.85rem; transition: 0.2s;
+      border: 1px solid #E2E8F0; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+    }
+    .btn-action:hover { background-color: #E2E8F0; color: #1E293B; }
+    .btn-action.danger { color: #EF4444; background-color: #FEF2F2; border-color: #FCA5A5; }
+    .btn-action.danger:hover { background-color: #FEE2E2; color: #DC2626; }
+    .btn-action.success { color: #10B981; background-color: #ECFDF5; border-color: #6EE7B7; }
+    .btn-action.success:hover { background-color: #D1FAE5; color: #059669; }
+
+    .admin-add-section {
+      background: #F8FAFC; border: 2px solid #E2E8F0; border-radius: 12px;
+      padding: 20px; margin-top: 24px;
+    }
+    .admin-add-section h3 { margin: 0 0 12px; font-size: 16px; color: #334155; }
+
+    .messages { list-style: none; padding: 0; margin: 0 0 16px; }
+    .messages li { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+    .messages li.error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .messages li.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  </style>
+
+  <section class="page">
+    <header class="page__header">
+      <h1 class="page__title">SOCI</h1>
+    </header>
+
+    {# --- Tabs --- #}
+    <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px; flex-wrap: wrap;">
+      <a href="?tab=da" class="tab-button {% if current_tab == 'da' %}active{% endif %}">D&A</a>
+      <a href="?tab=bd" class="tab-button {% if current_tab == 'bd' %}active{% endif %}">BD</a>
+      <a href="?tab=hr" class="tab-button {% if current_tab == 'hr' %}active{% endif %}">HR</a>
+      <a href="?tab=mc" class="tab-button {% if current_tab == 'mc' %}active{% endif %}">M&C</a>
+      <a href="?tab=board" class="tab-button {% if current_tab == 'board' %}active{% endif %}">BOARD</a>
+      {% if request.user.is_staff or request.user.is_superuser %}
+        <a href="?tab=admin" class="tab-button {% if current_tab == 'admin' %}active{% endif %}">ADMIN</a>
+      {% endif %}
+    </div>
+
+    {# --- Messages --- #}
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {# --- Toolbar (search + sort) — hidden on admin tab --- #}
+    {% if not is_admin_tab %}
+    <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
+      <form class="search-form" method="get" action="" role="search" style="display: flex; gap: 12px; align-items: center;">
+        <input type="hidden" name="tab" value="{{ current_tab }}">
+        <label class="search" for="soci-search-q">
+          <input id="soci-search-q" class="search__input" type="search" name="q" value="{{ search_query|default:'' }}" placeholder="Cerca socio..." autocomplete="off" />
+          <button type="submit" class="search__icon search__submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg>
+          </button>
+        </label>
+        <button type="submit" class="sort__button"><span>Applica</span></button>
+      </form>
+
+      <div class="top-sort-controls">
+        <span class="sort__label">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select">
+          <option value="nome">Nome</option>
+          <option value="ruolo">Ruolo</option>
+          <option value="area">Area</option>
+        </select>
+        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
+        </button>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ============================================================ #}
+    {# ADMIN TAB                                                     #}
+    {# ============================================================ #}
+    {% if is_admin_tab %}
+
+      <div class="table-card">
+        <table class="table" id="soci-table">
+          <thead>
+            <tr>
+              <th>Nome e Cognome</th>
+              <th>Email @jesap</th>
+              {% if request.user.is_superuser %}
+                <th style="text-align:right;">Azioni</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in admin_users %}
+            <tr class="soci-row">
+              <td>{{ u.get_full_name|default:u.username }}</td>
+              <td>{{ u.email|default:"-" }}</td>
+              {% if request.user.is_superuser %}
+              <td style="text-align:right;">
+                {% if u != request.user %}
+                <form method="post" action="{% url 'admin_demote' %}" style="display:inline;" onsubmit="return confirm('Rimuovere {{ u.username }} dagli admin?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="user_id" value="{{ u.pk }}">
+                  <button type="submit" class="btn-action danger">Rimuovi da admin</button>
+                </form>
+                {% else %}
+                  <span style="color:#94a3b8;font-size:13px;">Tu</span>
+                {% endif %}
+              </td>
+              {% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" style="text-align:center;padding:40px;color:#64748B;">Nessun admin trovato.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {# --- Promozione admin (solo superuser) --- #}
+      {% if request.user.is_superuser %}
+      <div class="admin-add-section">
+        <h3>Aggiungi admin</h3>
+        <form method="post" action="{% url 'admin_promote' %}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          {% csrf_token %}
+          <select name="user_id" class="search__input" style="max-width:350px;" required>
+            <option value="">-- Seleziona utente --</option>
+            {% for u in non_admin_users %}
+              <option value="{{ u.pk }}">{{ u.get_full_name|default:u.username }} ({{ u.email|default:"no email" }})</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn-action success">Promuovi ad admin</button>
+        </form>
+      </div>
+      {% endif %}
+
+    {# ============================================================ #}
+    {# STANDARD TABS (Tutti, D&A, BD, HR, M&C, Board)               #}
+    {# ============================================================ #}
+    {% else %}
+
+      <div class="table-card" style="overflow-x:auto;">
+        <table class="table" id="soci-table">
+          <thead>
+            <tr>
+              {# --- Admin-only columns --- #}
+              {% if request.user.is_staff or request.user.is_superuser %}
+                <th>ID</th>
+              {% endif %}
+
+              {# --- Standard columns --- #}
+              <th>Nome e Cognome</th>
+              <th>Ruolo</th>
+              <th>Area</th>
+              <th>Data Entrata</th>
+              <th>Facolt&agrave;</th>
+              <th>Corso di Studi</th>
+              <th>Note</th>
+
+              {# --- Admin-only sensitive columns --- #}
+              {% if request.user.is_staff or request.user.is_superuser %}
+                <th>Data di Nascita</th>
+                <th>Email @jesap</th>
+                <th>Email Personale</th>
+                <th>Cellulare</th>
+                <th>Data Inizio Prova</th>
+                <th>Anno di Studi</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            {% for s in soci_list %}
+              {% if s.nome_e_cognome and s.nome_e_cognome != 'None' %}
+              <tr class="soci-row">
+                {% if request.user.is_staff or request.user.is_superuser %}
+                  <td>{{ s.id }}</td>
+                {% endif %}
+
+                <td data-sort-key="nome"><strong>{{ s.nome_e_cognome }}</strong></td>
+                <td data-sort-key="ruolo">{{ s.ruolo|default:"-" }}</td>
+                <td data-sort-key="area">{{ s.area_di_appartenenza|default:"-" }}</td>
+                <td>{{ s.data_entrata|default:"-" }}</td>
+                <td>{{ s.facolta_field|default:"-" }}</td>
+                <td>{{ s.corso_di_studi|default:"-" }}</td>
+                <td>{{ s.note|default:"-" }}</td>
+
+                {% if request.user.is_staff or request.user.is_superuser %}
+                  <td>{{ s.data_di_nascita|default:"-" }}</td>
+                  <td>{{ s.email_jesap|default:"-" }}</td>
+                  <td>{{ s.email_personale|default:"-" }}</td>
+                  <td>{{ s.cellulare|default:"-" }}</td>
+                  <td>{{ s.data_inizio_prova|default:"-" }}</td>
+                  <td>{{ s.anno_di_studi|default:"-" }}</td>
+                {% endif %}
+              </tr>
+              {% endif %}
+            {% empty %}
+              <tr><td colspan="{% if request.user.is_staff %}14{% else %}7{% endif %}" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {# --- Pagination --- #}
+      {% if page_obj.has_other_pages %}
+      <nav class="pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px;">
+        {% if page_obj.has_previous %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+        {% endif %}
+        <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+        {% endif %}
+      </nav>
+      {% endif %}
+
+    {% endif %}
+  </section>
+
+  {% if not is_admin_tab %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var tbody = document.getElementById("table-body");
+      if (!tbody) return;
+
+      var topSelect = document.getElementById("top-sort-select");
+      var topDirBtn = document.getElementById("top-sort-dir");
+      var currentDir = "asc";
+
+      function doSort(key, dir) {
+        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+        var rows = Array.from(tbody.querySelectorAll(".soci-row"));
+        rows.sort(function (a, b) {
+          var cellA = a.querySelector('[data-sort-key="' + key + '"]');
+          var cellB = b.querySelector('[data-sort-key="' + key + '"]');
+          var vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
+          var vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
+          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+        });
+        var frag = document.createDocumentFragment();
+        rows.forEach(function (r) { frag.appendChild(r); });
+        tbody.appendChild(frag);
+      }
+
+      if (topSelect && topDirBtn) {
+        topSelect.addEventListener("change", function (e) { doSort(e.target.value, currentDir); });
+        topDirBtn.addEventListener("click", function () {
+          currentDir = currentDir === "asc" ? "desc" : "asc";
+          doSort(topSelect.value, currentDir);
+        });
+        doSort("nome", "asc");
+      }
+    });
+  </script>
+  {% endif %}
+{% endblock %}

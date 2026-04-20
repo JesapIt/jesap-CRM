@@ -1,38 +1,53 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP CRM - Leads{% endblock %}
+{% block title %}JESAP ERP - Leads{% endblock %}
 
 {% block content %}
+  <style>
+    .lead-row { transition: background-color 0.2s ease; cursor: pointer; }
+    .lead-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+
+    .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
+    .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+  </style>
+
   <section class="page">
     <header class="page__header">
       <h1 class="page__title">LEADS</h1>
     </header>
 
-    <div class="toolbar">
-      <label class="search" aria-label="Ricerca">
-        <input class="search__input" type="search" placeholder="Search" />
-        <span class="search__icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
-            <path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </span>
-      </label>
+    <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
 
-      <div class="sort">
-        <span class="sort__label">Sort by</span>
-        <button class="sort__button" type="button">
-          <span>Nome</span>
-          <span class="sort__chev" aria-hidden="true"></span>
-        </button>
-        <button class="icon-button icon-button--small" type="button" aria-label="Vista">
-          <span class="grid-icon" aria-hidden="true"></span>
+      <form class="search-form" method="get" action="" role="search" style="display: flex; gap: 12px; align-items: center;">
+        <label class="search" for="lead-search-q">
+          <input id="lead-search-q" class="search__input" type="search" name="q" value="{% if search_query %}{{ search_query }}{% endif %}" placeholder="Cerca lead..." autocomplete="off" />
+          <button type="submit" class="search__icon search__submit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg>
+          </button>
+        </label>
+
+        <select id="lead-stato" class="search__input" name="stato" style="max-width: 200px;">
+          <option value="">Tutti gli stati</option>
+        </select>
+
+        <button type="submit" class="sort__button"><span>Applica</span></button>
+      </form>
+
+      <div class="top-sort-controls">
+        <span class="sort__label">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select">
+          <option value="nome">Nome</option>
+          <option value="stato">Stato</option>
+          <option value="data">Data</option>
+        </select>
+        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
         </button>
       </div>
     </div>
 
     <div class="table-card">
-      <table class="table">
+      <table class="table" id="leads-table">
         <thead>
           <tr>
             <th>Nome cliente</th>
@@ -41,27 +56,29 @@
             <th>Data Completamento</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="table-body">
           <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-          </tr>
-          <tr>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
-            <td>Body</td>
+            <td colspan="4" style="text-align: center; padding: 40px; color: #64748B;">
+              Nessun lead presente. La sezione è in fase di sviluppo.
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
   </section>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var topSelect = document.getElementById("top-sort-select");
+      var topDirBtn = document.getElementById("top-sort-dir");
+      var currentDir = "asc";
+
+      if (topDirBtn) {
+        topDirBtn.addEventListener("click", function () {
+          currentDir = currentDir === "asc" ? "desc" : "asc";
+          topDirBtn.style.transform = currentDir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+        });
+      }
+    });
+  </script>
 {% endblock %}

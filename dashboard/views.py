@@ -11,7 +11,8 @@ from .models import Partnership
 from .forms import PartnershipForm
 
 # These are for generating secure email links
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.core import signing
 from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
 from django.conf import settings# Adicione este import lá no topo junto com os outros
@@ -53,13 +54,18 @@ def register_step1(request):
             verification_link = request.build_absolute_uri(f"/register/step2/{signed_token}/")
 
             try:
-                send_mail(
-                    subject="Completa la tua registrazione al CRM JESAP",
-                    message=f"Ciao! Clicca su questo link per impostare la tua password:\n\n{verification_link}",
-                    from_email=None,  # Django userà in automatico settings.DEFAULT_FROM_EMAIL
-                    recipient_list=[email],
-                    fail_silently=False,
+                ctx = {'verification_link': verification_link}
+                text_body = render_to_string('registration/registration_verify_email.txt', ctx)
+                html_body = render_to_string('registration/registration_verify_email.html', ctx)
+
+                msg = EmailMultiAlternatives(
+                    subject="Completa la tua registrazione all'ERP JESAP",
+                    body=text_body,
+                    from_email=None,
+                    to=[email],
                 )
+                msg.attach_alternative(html_body, 'text/html')
+                msg.send(fail_silently=False)
                 
                 messages.success(
                     request,
@@ -186,20 +192,25 @@ def partnerships(request):
         if status_filter:
             queryset = queryset.filter(status_partnership=status_filter)
             
-        context["partnerships"] = queryset
-        context["dati_tabella"] = queryset
+        paginator = Paginator(queryset, 25)
+        page_obj = paginator.get_page(request.GET.get("page"))
+        context["partnerships"] = page_obj
+        context["dati_tabella"] = page_obj
+        context["page_obj"] = page_obj
 
     elif tab == "non_finalizzate":
         queryset = PartnershipNonFin.objects.all().order_by('realta')
-        
-        # Filtro de busca na aba "non_finalizzate"
+
         if search_query:
             queryset = queryset.filter(
-                Q(realta__icontains=search_query) | 
+                Q(realta__icontains=search_query) |
                 Q(contatti__icontains=search_query)
             )
-            
-        context["dati_tabella"] = queryset
+
+        paginator = Paginator(queryset, 25)
+        page_obj = paginator.get_page(request.GET.get("page"))
+        context["dati_tabella"] = page_obj
+        context["page_obj"] = page_obj
 
     elif tab == "lead":
         # Lógica futura para lead partnership
@@ -212,8 +223,39 @@ def partnerships(request):
 
 @login_required(login_url="login")
 def progetti(request):
-    progetti_list = Progetti.objects.all()
-    return render(request, "dashboard/progetti.html", {"progetti": progetti_list})
+    search_query = request.GET.get("q", "").strip()
+    stato_filter = request.GET.get("stato", "").strip()
+
+    queryset = Progetti.objects.all().order_by('nome_progetto')
+
+    stati = (
+        Progetti.objects.exclude(stato__isnull=True)
+        .exclude(stato__exact='')
+        .exclude(stato='None')
+        .values_list('stato', flat=True)
+        .distinct()
+    )
+
+    if search_query:
+        queryset = queryset.filter(
+            Q(nome_progetto__icontains=search_query)
+            | Q(pm__icontains=search_query)
+            | Q(cliente__icontains=search_query)
+        )
+
+    if stato_filter:
+        queryset = queryset.filter(stato=stato_filter)
+
+    paginator = Paginator(queryset, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "dashboard/progetti.html", {
+        "progetti": page_obj,
+        "page_obj": page_obj,
+        "search_query": search_query,
+        "stato_filter": stato_filter,
+        "stati": stati,
+    })
 
 @login_required(login_url="login")
 def eventi(request):
@@ -227,8 +269,106 @@ def formazioni(request):
 
 @login_required(login_url="login")
 def soci(request):
-    soci_list = Soci.objects.all()
-    return render(request, "dashboard/pages/soci.html", {"soci": soci_list})
+    tab = request.GET.get("tab", "da")
+    search_query = request.GET.get("q", "").strip()
+
+    AREA_TABS = {
+        "da":  "D&A",
+        "bd":  "BD",
+        "hr":  "HR",
+        "mc":  "M&C",
+    }
+
+    # Redirect unknown tabs to default
+    valid_tabs = set(AREA_TABS) | {"board", "admin"}
+    if tab not in valid_tabs:
+        tab = "da"
+
+    context = {
+        "current_tab": tab,
+        "search_query": search_query,
+        "is_admin_tab": tab == "admin",
+    }
+
+    if tab == "admin":
+        admin_users = User.objects.filter(Q(is_staff=True) | Q(is_superuser=True))
+        if search_query:
+            admin_users = admin_users.filter(
+                Q(username__icontains=search_query)
+                | Q(email__icontains=search_query)
+                | Q(first_name__icontains=search_query)
+                | Q(last_name__icontains=search_query)
+            )
+        context["admin_users"] = admin_users.order_by("username")
+
+        if request.user.is_superuser:
+            all_non_admin = User.objects.filter(is_staff=False, is_superuser=False).order_by("username")
+            context["non_admin_users"] = all_non_admin
+
+        context["soci_list"] = []
+    else:
+        # Base filter: only active members
+        queryset = Soci.objects.filter(status__iexact="Associato").order_by("nome_e_cognome")
+
+        if tab == "board":
+            queryset = queryset.filter(
+                Q(ruolo__icontains="board")
+                | Q(ruolo__icontains="presidente")
+                | Q(ruolo__icontains="vicepresidente")
+                | Q(ruolo__icontains="segretario")
+                | Q(ruolo__icontains="tesoriere")
+                | Q(ruolo_esteso__icontains="board")
+            )
+        elif tab in AREA_TABS:
+            queryset = queryset.filter(area_di_appartenenza__iexact=AREA_TABS[tab])
+
+        if search_query:
+            queryset = queryset.filter(
+                Q(nome_e_cognome__icontains=search_query)
+                | Q(ruolo__icontains=search_query)
+                | Q(email_jesap__icontains=search_query)
+            )
+
+        paginator = Paginator(queryset, 25)
+        page_obj = paginator.get_page(request.GET.get("page"))
+        context["soci_list"] = page_obj
+        context["page_obj"] = page_obj
+
+    return render(request, "dashboard/soci.html", context)
+
+
+@login_required(login_url="login")
+@user_passes_test(lambda u: u.is_superuser)
+def admin_promote(request):
+    if request.method == "POST":
+        user_id = request.POST.get("user_id")
+        try:
+            target = User.objects.get(pk=user_id)
+            target.is_staff = True
+            target.save(update_fields=["is_staff"])
+            messages.success(request, f"{target.username} promosso ad admin.")
+        except User.DoesNotExist:
+            messages.error(request, "Utente non trovato.")
+    return redirect(reverse("soci") + "?tab=admin")
+
+
+@login_required(login_url="login")
+@user_passes_test(lambda u: u.is_superuser)
+def admin_demote(request):
+    if request.method == "POST":
+        user_id = request.POST.get("user_id")
+        try:
+            target = User.objects.get(pk=user_id)
+            if target == request.user:
+                messages.error(request, "Non puoi rimuovere te stesso.")
+            else:
+                target.is_staff = False
+                target.is_superuser = False
+                target.save(update_fields=["is_staff", "is_superuser"])
+                messages.success(request, f"{target.username} rimosso dagli admin.")
+        except User.DoesNotExist:
+            messages.error(request, "Utente non trovato.")
+    return redirect(reverse("soci") + "?tab=admin")
 
 @user_passes_test(is_editor)
 def partnership_create(request):

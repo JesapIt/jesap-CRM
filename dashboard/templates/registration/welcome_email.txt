@@ -1,0 +1,13 @@
+Benvenuto, {{ user.username }}!
+
+Il tuo account sul ERP JESAP è stato creato con successo.
+
+Username: {{ user.username }}
+Email: {{ user.email }}
+
+Accedi all'ERP: {{ login_url }}
+
+Se non hai richiesto questo account, ignora questa email.
+
+---
+JESAP Junior Enterprise — Questa è un'email automatica, non rispondere.

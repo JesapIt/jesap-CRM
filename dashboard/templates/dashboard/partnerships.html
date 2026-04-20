@@ -1,6 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP CRM - Partnerships{% endblock %}
+{% block title %}JESAP ERP - Partnerships{% endblock %}
 
 {% block content %}
   <style>
@@ -230,7 +230,19 @@
           </tbody>
         </table>
       </div>
-    </div> 
+
+      {% if page_obj.has_other_pages %}
+      <nav class="pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px;">
+        {% if page_obj.has_previous %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+        {% endif %}
+        <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+        {% endif %}
+      </nav>
+      {% endif %}
+    </div>
   </section>
 
   <script>
