@@ -16,10 +16,18 @@ urlpatterns = [
     path('partnerships/<str:pk>/modifica/', views.partnership_update, name='partnership_update'),
     path('partnerships/<str:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
 
+    # Soci
+    path('soci/', views.soci, name='soci'),
+    path('soci/admin-promote/', views.admin_promote, name='admin_promote'),
+    path('soci/admin-demote/', views.admin_demote, name='admin_demote'),
+
     # Authentication & Registration
     path('login/', views.login_view, name='login'),
     path('register/', views.register_step1, name='register_step1'), # Step 1: Email check
     path('register/step2/<str:token>/', views.register_step2, name='register_step2'), # Step 2: Password setup
+
+    # Logout
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
     # Password reset (Django built-in views + custom templates)
     path(

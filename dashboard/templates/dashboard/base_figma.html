@@ -4,7 +4,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}JESAP CRM{% endblock %}</title>
+    <title>{% block title %}JESAP ERP{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -15,7 +15,7 @@
     <div class="app">
       <header class="topbar">
         <div class="topbar__inner">
-          <a class="brand" href="{% url 'home' %}" aria-label="JESAP CRM Home">
+          <a class="brand" href="{% url 'home' %}" aria-label="JESAP ERP Home">
             <span class="brand__mark" aria-hidden="true">
               <img
                 class="brand__mark-img"
@@ -30,11 +30,36 @@
             <a class="nav__link {% if request.resolver_match.url_name == 'progetti' %}is-active{% endif %}" href="{% url 'progetti' %}">PROGETTI</a>
             <a class="nav__link {% if request.resolver_match.url_name == 'leads' %}is-active{% endif %}" href="{% url 'leads' %}">LEADS</a>
             <a class="nav__link {% if request.resolver_match.url_name == 'partnerships' %}is-active{% endif %}" href="{% url 'partnerships' %}">PARTNERSHIPS</a>
+            <a class="nav__link {% if request.resolver_match.url_name == 'soci' %}is-active{% endif %}" href="{% url 'soci' %}">SOCI</a>
           </nav>
 
-          <button class="icon-button" type="button" aria-label="Menu">
-            <span class="hamburger" aria-hidden="true"></span>
-          </button>
+          <div class="user-menu" style="position:relative;">
+            <button class="icon-button user-menu__toggle" type="button" aria-label="Menu">
+              <span class="hamburger" aria-hidden="true"></span>
+            </button>
+            <div id="user-dropdown" class="user-dropdown" style="display:none;position:absolute;right:0;top:100%;margin-top:8px;background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.12);min-width:200px;z-index:100;overflow:hidden;">
+              <a href="https://www.jesap.it" target="_blank" style="display:block;padding:12px 20px;color:#333;text-decoration:none;font-size:14px;font-weight:500;border-bottom:1px solid #eee;">Website</a>
+              <a href="https://drive.google.com/drive/folders/0ABK656q4w5scUk9PVA?hl=it" target="_blank" style="display:block;padding:12px 20px;color:#333;text-decoration:none;font-size:14px;font-weight:500;border-bottom:1px solid #eee;">Google Drive</a>
+              <form method="post" action="{% url 'logout' %}" style="margin:0;" onsubmit="return confirm('Sei sicuro di voler effettuare il logout?');">
+                {% csrf_token %}
+                <button type="submit" style="display:block;width:100%;padding:12px 20px;background:none;border:none;text-align:left;color:#b91c1c;font-size:14px;font-weight:600;cursor:pointer;">Logout</button>
+              </form>
+            </div>
+          </div>
+          <script>
+          (function(){
+            var toggle = document.querySelector('.user-menu__toggle');
+            var dd = document.getElementById('user-dropdown');
+            toggle.addEventListener('click', function(e){
+              e.stopPropagation();
+              var open = dd.style.display === 'block';
+              dd.style.display = open ? 'none' : 'block';
+            });
+            document.addEventListener('click', function(e){
+              if (!e.target.closest('.user-menu')) dd.style.display = 'none';
+            });
+          })();
+          </script>
         </div>
       </header>
 

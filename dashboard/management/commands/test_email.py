@@ -48,7 +48,7 @@ class Command(BaseCommand):
             "plain",
             "utf-8",
         )
-        msg["Subject"] = "Test SMTP JESAP CRM (management command)"
+        msg["Subject"] = "Test SMTP JESAP ERP (management command)"
         msg["From"] = user
         msg["To"] = user
 

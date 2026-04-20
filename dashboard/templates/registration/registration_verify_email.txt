@@ -1,0 +1,12 @@
+Completa la registrazione — JESAP ERP
+
+Ciao! Abbiamo ricevuto la tua richiesta di registrazione al ERP JESAP.
+
+Clicca il link qui sotto per impostare la tua password e attivare il tuo account:
+
+{{ verification_link }}
+
+Il link scade tra 24 ore. Se non hai richiesto la registrazione, ignora questa email.
+
+---
+JESAP Junior Enterprise — Questa è un'email automatica, non rispondere.

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="background:#1a1a2e;padding:30px 40px;text-align:center;">
+              <h1 style="color:#ffffff;margin:0;font-size:24px;">JESAP ERP</h1>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px;">
+              <h2 style="color:#1a1a2e;margin:0 0 20px;">Benvenuto, {{ user.username }}!</h2>
+              <p style="color:#333;font-size:16px;line-height:1.6;">
+                Il tuo account sul ERP JESAP è stato creato con successo.
+              </p>
+              <p style="color:#333;font-size:16px;line-height:1.6;">
+                <strong>Username:</strong> {{ user.username }}<br>
+                <strong>Email:</strong> {{ user.email }}
+              </p>
+              <p style="color:#333;font-size:16px;line-height:1.6;">
+                Puoi accedere all'ERP cliccando il pulsante qui sotto:
+              </p>
+              <table cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                <tr>
+                  <td style="background:#1a1a2e;border-radius:6px;padding:14px 32px;">
+                    <a href="{{ login_url }}" style="color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;">Accedi all'ERP</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#666;font-size:14px;line-height:1.6;">
+                Se non hai richiesto questo account, ignora questa email.
+              </p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f4f5f7;padding:20px 40px;text-align:center;">
+              <p style="color:#999;font-size:12px;margin:0;">
+                &copy; JESAP Junior Enterprise &mdash; Questa è un'email automatica, non rispondere.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
