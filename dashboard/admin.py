@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
+from .models import AuditLog, Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
 
 @admin.register(Eventi)
 class EventiAdmin(admin.ModelAdmin):
@@ -28,3 +28,24 @@ class PartnershipAdmin(admin.ModelAdmin):
 @admin.register(PartnershipNonFin)
 class PartnershipNonFinAdmin(admin.ModelAdmin):
     list_display = ('realta', 'contatti', 'periodo', 'anno', 'cartella')
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('timestamp', 'user_repr', 'action', 'content_type', 'object_repr')
+    list_filter = ('action', 'content_type', 'timestamp')
+    search_fields = ('user_repr', 'object_repr', 'object_pk')
+    readonly_fields = (
+        'timestamp', 'user', 'user_repr', 'action',
+        'content_type', 'object_pk', 'object_repr', 'changes',
+    )
+    date_hierarchy = 'timestamp'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

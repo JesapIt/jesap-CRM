@@ -4,6 +4,21 @@ register = template.Library()
 
 
 @register.filter
+def split(value, sep=' '):
+    if value is None:
+        return []
+    return str(value).split(sep)
+
+
+@register.filter
+def get_field(form, name):
+    try:
+        return form[name]
+    except KeyError:
+        return ''
+
+
+@register.filter
 def format_username(value):
     """
     'daniele.tegliucci' -> 'Daniele Tegliucci'

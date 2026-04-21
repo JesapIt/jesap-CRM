@@ -1,6 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP ERP - Elimina Partnership{% endblock %}
+{% block title %}JESAP ERP - Elimina Progetto{% endblock %}
 
 {% block head %}
 <style>
@@ -25,20 +25,21 @@
 {% block content %}
 <section class="page">
   <header class="page__header">
-    <h1 class="page__title">ELIMINA PARTNERSHIP</h1>
+    <h1 class="page__title">ELIMINA PROGETTO</h1>
   </header>
 
   <div class="form-container">
     <div class="form-card">
       <h2 class="confirm-title">Conferma eliminazione</h2>
-      <p class="confirm-lead">Sei sicuro di voler eliminare questa partnership?</p>
+      <p class="confirm-lead">Sei sicuro di voler eliminare questo progetto?</p>
 
       <div class="confirm-details">
         <dl>
-          <dt>ID</dt><dd>{{ partnership.id }}</dd>
-          <dt>Nome azienda</dt><dd>{{ partnership.partnership|default:"-" }}</dd>
-          <dt>Status</dt><dd>{{ partnership.status_partnership|default:"-" }}</dd>
-          <dt>Contatti</dt><dd>{{ partnership.contatti|default:"-" }}</dd>
+          <dt>Codice</dt><dd>{{ progetto.codice_progetto }}</dd>
+          <dt>Nome</dt><dd>{{ progetto.nome_progetto|default:"-" }}</dd>
+          <dt>Cliente</dt><dd>{{ progetto.cliente|default:"-" }}</dd>
+          <dt>Stato</dt><dd>{{ progetto.stato|default:"-" }}</dd>
+          <dt>PM</dt><dd>{{ progetto.pm|default:"-" }}</dd>
         </dl>
       </div>
 
@@ -47,7 +48,7 @@
       <form method="post">
         {% csrf_token %}
         <div class="form-actions">
-          <a href="{% url 'partnerships' %}" class="btn-action">Annulla</a>
+          <a href="{% url 'progetti' %}" class="btn-action">Annulla</a>
           <button type="submit" class="btn-danger">Elimina</button>
         </div>
       </form>

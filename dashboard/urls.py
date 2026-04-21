@@ -10,6 +10,11 @@ urlpatterns = [
     path('leads/', views.leads, name='leads'),
     path('progetti/', views.progetti, name='progetti'),
     path('partnerships/', views.partnerships, name='partnerships'),
+
+    # --- CRUD de Progetti ---
+    path('progetti/nuova/', views.progetto_create, name='progetto_create'),
+    path('progetti/<str:pk>/modifica/', views.progetto_update, name='progetto_update'),
+    path('progetti/<str:pk>/elimina/', views.progetto_delete, name='progetto_delete'),
     
     # --- CRUD de Partnerships ---
     path('partnerships/nuova/', views.partnership_create, name='partnership_create'),
