@@ -16,6 +16,10 @@ urlpatterns = [
     path('partnerships/<str:pk>/modifica/', views.partnership_update, name='partnership_update'),
     path('partnerships/<str:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
 
+    # --- CRUD de Partnerships Finalizzate ---
+    path('partnerships/non-finalizzate/nuova/', views.partnership_nonfin_create, name='partnership_nonfin_create'),
+    path('partnerships/non-finalizzate/<str:pk>/modifica/', views.partnership_nonfin_update, name='partnership_nonfin_update'),
+
     # Soci
     path('soci/', views.soci, name='soci'),
     path('soci/admin-promote/', views.admin_promote, name='admin_promote'),

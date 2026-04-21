@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from urllib.parse import urlencode
 from .models import Partnership
-from .forms import PartnershipForm
+from .forms import PartnershipForm, PartnershipNonFinForm
 
 # These are for generating secure email links
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -411,3 +411,35 @@ def partnership_delete(request, pk):
         return redirect('partnerships') # Redireciona para a aba principal
         
     return render(request, 'dashboard/partnership_confirm_delete.html', {'partnership': partnership})
+
+
+@user_passes_test(is_editor)
+def partnership_nonfin_create(request):
+    if request.method == 'POST':
+        form = PartnershipNonFinForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Partnership finalizzata criada com sucesso!")
+            return redirect(reverse("partnerships") + "?tab=non_finalizzate")
+    else:
+        form = PartnershipNonFinForm()
+
+    context = {'form': form, 'azione': 'Nuova'}
+    return render(request, 'dashboard/partnership_nonfin_form.html', context)
+
+
+@user_passes_test(is_editor)
+def partnership_nonfin_update(request, pk):
+    partnership_nonfin = get_object_or_404(PartnershipNonFin, realta=pk)
+
+    if request.method == 'POST':
+        form = PartnershipNonFinForm(request.POST, instance=partnership_nonfin)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Partnership finalizzata atualizada com sucesso!")
+            return redirect(reverse("partnerships") + "?tab=non_finalizzate")
+    else:
+        form = PartnershipNonFinForm(instance=partnership_nonfin)
+
+    context = {'form': form, 'azione': 'Modifica'}
+    return render(request, 'dashboard/partnership_nonfin_form.html', context)
