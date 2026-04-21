@@ -1,3 +1,6 @@
+from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 class Eventi(models.Model):
@@ -177,3 +180,47 @@ class PartnershipNonFin(models.Model):
     class Meta:
         managed = False
         db_table = 'PARTNERSHIP_NON_FIN'
+
+
+class AuditLog(models.Model):
+    ACTION_CREATE = 'create'
+    ACTION_UPDATE = 'update'
+    ACTION_DELETE = 'delete'
+    ACTION_CHOICES = [
+        (ACTION_CREATE, 'Create'),
+        (ACTION_UPDATE, 'Update'),
+        (ACTION_DELETE, 'Delete'),
+    ]
+
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='audit_logs',
+    )
+    user_repr = models.CharField(max_length=255, blank=True)
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES)
+
+    content_type = models.ForeignKey(
+        ContentType,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    object_pk = models.CharField(max_length=255, db_index=True)
+    object_repr = models.CharField(max_length=255, blank=True)
+    content_object = GenericForeignKey('content_type', 'object_pk')
+
+    changes = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['content_type', 'object_pk']),
+        ]
+
+    def __str__(self):
+        who = self.user_repr or 'anonymous'
+        return f'[{self.timestamp:%Y-%m-%d %H:%M}] {who} {self.action} {self.object_repr}'

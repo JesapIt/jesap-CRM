@@ -1,0 +1,182 @@
+{% extends "dashboard/base_figma.html" %}
+{% load dashboard_extras %}
+
+{% block title %}JESAP ERP - {{ azione }} Progetto{% endblock %}
+
+{% block head %}
+<style>
+  .form-container { max-width: 900px; margin: 24px auto; padding: 0 20px; }
+  .form-card { background: #fff; padding: 32px; border-radius: 12px; box-shadow: var(--shadow); border: 2px solid var(--soft-line); }
+  .form-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--soft-line); }
+  .form-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .form-section__title { font-size: 15px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 16px 0; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .form-group { margin-bottom: 0; }
+  .form-group--full { grid-column: 1 / -1; }
+  .form-group label { display: block; font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .form-control,
+  .form-group input[type="text"],
+  .form-group input[type="number"],
+  .form-group input[type="email"],
+  .form-group input[type="password"],
+  .form-group input[type="date"],
+  .form-group input[type="url"],
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    height: 42px;
+    border-radius: 8px;
+    border: 2px solid var(--soft-line);
+    padding: 0 14px;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--ink);
+    background: #fff;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+  }
+  .form-group textarea { height: auto; min-height: 96px; padding: 10px 14px; resize: vertical; }
+  .form-control:focus,
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgba(138, 59, 134, 0.1);
+  }
+  .form-group select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--brand) 50%), linear-gradient(135deg, var(--brand) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 36px; cursor: pointer; }
+  .field-error { color: #b91c1c; font-size: 13px; margin-top: 6px; }
+  .field-help { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; }
+  .btn-primary, .btn-action { height: 42px; padding: 0 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; border: 2px solid var(--soft-line); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  .form-container .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .form-container .btn-primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); }
+  .form-container .btn-action { background: #fff; color: var(--brand); }
+  .form-container .btn-action:hover { background: var(--soft-line); color: var(--brand-ink); }
+
+  .form-details { border: 2px solid var(--soft-line); border-radius: 10px; padding: 0; background: #fff; }
+  .form-details[open] { padding-bottom: 4px; }
+  .form-details > summary { list-style: none; cursor: pointer; padding: 14px 18px; font-weight: 700; color: var(--brand); display: flex; align-items: center; justify-content: space-between; user-select: none; }
+  .form-details > summary::-webkit-details-marker { display: none; }
+  .form-details > summary::after { content: '▾'; transition: transform 0.2s; }
+  .form-details[open] > summary::after { transform: rotate(180deg); }
+  .form-details__body { padding: 4px 18px 16px 18px; }
+
+  .form-errors-global { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="page">
+  <header class="page__header">
+    <h1 class="page__title">{{ azione }} PROGETTO</h1>
+  </header>
+
+  <div class="form-container">
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="form-errors-global">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="form-section">
+        <h2 class="form-section__title">Informazioni generali</h2>
+        <div class="form-grid">
+          {% for name in 'codice_progetto nome_progetto cliente tipologia_cliente tipologia_di_progetto area_di_pertinenza pm provenienza'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Stato e date</h2>
+        <div class="form-grid">
+          {% for name in 'stato data_primo_contatto data_firma_contratto data_inizio mese_inizio data_fine_contratto anno n_risorse_coinvolte'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Dati economici</h2>
+        <div class="form-grid">
+          {% for name in 'fatturato_senza_iva_field iva costi profitti'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Performance e dettagli</h2>
+        <div class="form-grid">
+          {% for name in 'coinvolgimento_della_pubblica_amministrazione soddisfazione_team_in_field soddisfazione_cliente_in_field'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+
+          {% with field=form.descrizione_servizio_offerto %}
+            <div class="form-group form-group--full">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+            </div>
+          {% endwith %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <details class="form-details">
+          <summary>Risorse coinvolte (1–20)</summary>
+          <div class="form-details__body">
+            <div class="form-grid">
+              {% for name in 'risorsa_1 risorsa_2 risorsa_3 risorsa_4 risorsa_5 risorsa_6 risorsa_7 risorsa_8 risorsa_9 risorsa_10 risorsa_11 risorsa_12 risorsa_13 risorsa_14 risorsa_15 risorsa_16 risorsa_17 risorsa_18 risorsa_19 risorsa_20'|split:' ' %}
+                {% with field=form|get_field:name %}
+                  <div class="form-group">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                  </div>
+                {% endwith %}
+              {% endfor %}
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="form-actions">
+        <a href="{% url 'progetti' %}" class="btn-action">Annulla</a>
+        <button type="submit" class="btn-primary">Salva</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

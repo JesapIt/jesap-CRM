@@ -1,6 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP ERP - {{ azione }} Partnership{% endblock %}
+{% block title %}JESAP ERP - {{ azione }} Partnership Finalizzata{% endblock %}
 
 {% block head %}
 <style>
@@ -53,7 +53,7 @@
 {% block content %}
 <section class="page">
   <header class="page__header">
-    <h1 class="page__title">{{ azione }} PARTNERSHIP</h1>
+    <h1 class="page__title">{{ azione }} PARTNERSHIP FINALIZZATA</h1>
   </header>
 
   <div class="form-container">
@@ -76,7 +76,7 @@
       {% endfor %}
 
       <div class="form-actions">
-        <a href="{% url 'partnerships' %}" class="btn-action">Annulla</a>
+        <a href="{% url 'partnerships' %}?tab=non_finalizzate" class="btn-action">Annulla</a>
         <button type="submit" class="btn-primary">Salva</button>
       </div>
     </form>
