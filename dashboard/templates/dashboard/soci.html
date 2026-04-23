@@ -88,16 +88,22 @@
         <button type="submit" class="sort__button"><span>Applica</span></button>
       </form>
 
-      <div class="top-sort-controls">
-        <span class="sort__label">Ordina per:</span>
-        <select id="top-sort-select" class="top-sort-select">
-          <option value="nome">Nome</option>
-          <option value="ruolo">Ruolo</option>
-          <option value="area">Area</option>
-        </select>
-        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
-        </button>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="top-sort-controls">
+          <span class="sort__label">Ordina per:</span>
+          <select id="top-sort-select" class="top-sort-select">
+            <option value="nome">Nome</option>
+            <option value="ruolo">Ruolo</option>
+            <option value="area">Area</option>
+          </select>
+          <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
+          </button>
+        </div>
+
+        {% if is_editor %}
+          <a href="{% url 'socio_create' %}" class="btn-action success" style="padding:8px 14px;font-size:0.9rem;">+ Aggiungi Socio</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -193,6 +199,10 @@
                 <th>Data Inizio Prova</th>
                 <th>Anno di Studi</th>
               {% endif %}
+
+              {% if is_editor %}
+                <th style="text-align:right;">Azioni</th>
+              {% endif %}
             </tr>
           </thead>
           <tbody id="table-body">
@@ -219,10 +229,16 @@
                   <td>{{ s.data_inizio_prova|default:"-" }}</td>
                   <td>{{ s.anno_di_studi|default:"-" }}</td>
                 {% endif %}
+
+                {% if is_editor %}
+                  <td style="text-align:right;white-space:nowrap;">
+                    <a href="{% url 'socio_update' s.id %}" class="btn-action">Modifica</a>
+                  </td>
+                {% endif %}
               </tr>
               {% endif %}
             {% empty %}
-              <tr><td colspan="{% if request.user.is_staff %}14{% else %}7{% endif %}" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
+              <tr><td colspan="{% if request.user.is_staff %}15{% else %}8{% endif %}" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
             {% endfor %}
           </tbody>
         </table>

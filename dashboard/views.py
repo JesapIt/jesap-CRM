@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from urllib.parse import urlencode
 from .models import Partnership
-from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm
+from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm, SocioCreateForm, SocioUpdateForm
 
 # These are for generating secure email links
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -18,9 +18,12 @@ from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, Part
 from django.conf import settings# Adicione este import lá no topo junto com os outros
 from django.contrib.auth.decorators import user_passes_test
 
-# Função que checa se o usuário é um Editor ou um Superusuário
+# RBAC: Editor = gruppo 'Editori' | staff admin | superuser
 def is_editor(user):
-    return user.groups.filter(name='Editori').exists() or user.is_superuser
+    return (
+        user.is_authenticated
+        and (user.is_superuser or user.is_staff or user.groups.filter(name='Editori').exists())
+    )
 
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
@@ -331,6 +334,7 @@ def soci(request):
         "current_tab": tab,
         "search_query": search_query,
         "is_admin_tab": tab == "admin",
+        "is_editor": is_editor(request.user),
     }
 
     if tab == "admin":
@@ -412,6 +416,33 @@ def admin_demote(request):
         except User.DoesNotExist:
             messages.error(request, "Utente non trovato.")
     return redirect(reverse("soci") + "?tab=admin")
+
+@user_passes_test(is_editor)
+def socio_create(request):
+    if request.method == 'POST':
+        form = SocioCreateForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Socio creato con successo!")
+            return redirect('soci')
+    else:
+        form = SocioCreateForm()
+    return render(request, 'dashboard/socio_form.html', {'form': form, 'azione': 'Nuovo'})
+
+
+@user_passes_test(is_editor)
+def socio_update(request, pk):
+    socio = get_object_or_404(Soci, id=pk)
+    if request.method == 'POST':
+        form = SocioUpdateForm(request.POST, instance=socio)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Socio aggiornato con successo!")
+            return redirect('soci')
+    else:
+        form = SocioUpdateForm(instance=socio)
+    return render(request, 'dashboard/socio_form.html', {'form': form, 'azione': 'Modifica'})
+
 
 @user_passes_test(is_editor)
 def partnership_create(request):

@@ -27,6 +27,8 @@ urlpatterns = [
 
     # Soci
     path('soci/', views.soci, name='soci'),
+    path('soci/nuovo/', views.socio_create, name='socio_create'),
+    path('soci/<int:pk>/modifica/', views.socio_update, name='socio_update'),
     path('soci/admin-promote/', views.admin_promote, name='admin_promote'),
     path('soci/admin-demote/', views.admin_demote, name='admin_demote'),
 

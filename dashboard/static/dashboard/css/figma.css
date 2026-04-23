@@ -3,6 +3,8 @@
 :root{
   --brand: #8A3B86;         /* purple used across screenshots */
   --brand-ink: #6f2f6b;
+  --brand-light: #B569B0;   /* lighter purple for gradient start */
+  --brand-gradient: linear-gradient(135deg, var(--brand-light) 0%, var(--brand-ink) 100%);
   --surface: #ffffff;
   --ink: #1f1f1f;
   --muted: #6b6b6b;
@@ -385,5 +387,22 @@ button.search__submit.search__icon{
   .footer__inner{ grid-template-columns:1fr; }
   .footer__col--right,
   .footer__col--center{ align-items:flex-start; }
+}
+
+/* ── Purple text gradient (light → dark) — applied globally ─────────────── */
+.brand,
+.page__title,
+.auth-title,
+.welcome-card h2,
+.confirm-title,
+.form-section__title,
+.form-details > summary,
+.auth-link a,
+.hero__title{
+  background: var(--brand-gradient) !important;
+  -webkit-background-clip: text !important;
+          background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
