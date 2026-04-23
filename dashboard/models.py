@@ -1,7 +1,24 @@
+import re
+from datetime import date, datetime
+
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.db.models import Max
+
+
+def _parse_iso_date(value):
+    if value in (None, ''):
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _slug_for_email(value):
+    return re.sub(r'\s+', '', (value or '')).lower()
 
 class Eventi(models.Model):
     id = models.TextField(db_column='ID', primary_key=True)
@@ -107,6 +124,99 @@ class Progetti(models.Model):
 
 
 class Soci(models.Model):
+    class Sesso(models.TextChoices):
+        M = 'M', 'M'
+        F = 'F', 'F'
+        NB = 'N.B.', 'N.B.'
+
+    class Facolta(models.TextChoices):
+        MEDICINA_PSICOLOGIA = 'Medicina e Psicologia', 'Medicina e Psicologia'
+        ECONOMIA = 'Economia', 'Economia'
+        INGEGNERIA_INFORMAZIONE = (
+            "Ingegneria dell'informazione informatica e statistica",
+            "Ingegneria dell'informazione informatica e statistica",
+        )
+        GIURISPRUDENZA = 'Giurisprudenza', 'Giurisprudenza'
+        SCIENZE_POLITICHE = (
+            'Scienze politiche sociologia e comunicazione',
+            'Scienze politiche sociologia e comunicazione',
+        )
+        LETTERE = 'Lettere e Filosofia', 'Lettere e Filosofia'
+        ARCHITETTURA = 'Architettura', 'Architettura'
+        FARMACIA_MEDICINA = 'Farmacia e Medicina', 'Farmacia e Medicina'
+        SCIENZE_MFN = (
+            'Scienze Matematiche fisiche e naturali',
+            'Scienze Matematiche fisiche e naturali',
+        )
+        INGEGNERIA_CIVILE = (
+            'Ingegneria Civile e Industriale',
+            'Ingegneria Civile e Industriale',
+        )
+        MATEMATICA = 'Matematica', 'Matematica'
+        INGEGNERIA_ASTRONAUTICA = (
+            'Ingegneria Astronautica, Elettrica ed Energetica',
+            'Ingegneria Astronautica, Elettrica ed Energetica',
+        )
+
+    class Status(models.TextChoices):
+        ASSOCIATO = 'Associato', 'Associato'
+        IN_PROVA = 'Socio in prova', 'Socio in prova'
+        ALUMNUS = 'Alumnus', 'Alumnus'
+        USCITO = 'Uscito', 'Uscito'
+        PROVA_NON_PASSATA = 'Periodo di prova non passato', 'Periodo di prova non passato'
+        PROVA_TERMINATA = (
+            'Periodo di prova terminato anticipatamente',
+            'Periodo di prova terminato anticipatamente',
+        )
+        ALUMNUS_VALUTAZIONE = (
+            'Alumnus in stato di valutazione',
+            'Alumnus in stato di valutazione',
+        )
+
+    class Area(models.TextChoices):
+        HR = 'HR', 'HR'
+        BD = 'BD', 'BD'
+        MC = 'M&C', 'M&C'
+        LEGAL = 'Legal', 'Legal'
+        AUDIT = 'Audit', 'Audit'
+        DA = 'D&A', 'D&A'
+        BOARD = 'Board', 'Board'
+
+    class AnnoStudi(models.TextChoices):
+        PRIMO_TRIENNALE = 'Primo Triennale', 'Primo Triennale'
+        SECONDO_TRIENNALE = 'Secondo Triennale', 'Secondo Triennale'
+        TERZO_TRIENNALE = 'Terzo Triennale', 'Terzo Triennale'
+        PRIMO_MAGISTRALE = 'Primo Magistrale', 'Primo Magistrale'
+        SECONDO_MAGISTRALE = 'Secondo Magistrale', 'Secondo Magistrale'
+        LAUREATO = 'Laureato', 'Laureato'
+        FUORI_CORSO = 'Fuori Corso', 'Fuori Corso'
+
+    class Ruolo(models.TextChoices):
+        SENIOR = 'Senior Consultant', 'Senior Consultant'
+        JUNIOR = 'Junior Consultant', 'Junior Consultant'
+        CONSULTANT = 'Consultant', 'Consultant'
+        HEAD_OF = 'Head of', 'Head of'
+        PRESIDENT = 'President', 'President'
+        VICE_PRESIDENT = 'Vice President', 'Vice President'
+        TREASURER = 'Treasurer', 'Treasurer'
+        SECRETARY_GENERAL = 'Secretary General', 'Secretary General'
+        INTERNATIONAL_MANAGER = 'International Manager', 'International Manager'
+
+    _ACADEMIC_STATUS_MAP = {
+        'Primo Triennale': 'Studente Triennale',
+        'Secondo Triennale': 'Studente Triennale',
+        'Terzo Triennale': 'Studente Triennale',
+        'Primo Magistrale': 'Studente Magistrale',
+        'Secondo Magistrale': 'Studente Magistrale',
+        'Laureato': 'Laureato',
+        'Fuori Corso': 'Fuori Corso',
+    }
+
+    _BOARD_STANDALONE_RUOLI = {
+        'President', 'Vice President', 'Treasurer',
+        'Secretary General', 'International Manager',
+    }
+
     nome_e_cognome = models.TextField(db_column='NOME E COGNOME', blank=True, null=True)
     nome_1 = models.TextField(db_column='NOME 1', blank=True, null=True)
     nome_2 = models.TextField(db_column='NOME 2', blank=True, null=True)
@@ -137,6 +247,69 @@ class Soci(models.Model):
     class Meta:
         managed = False
         db_table = 'SOCI'
+
+    def _compute_nome_e_cognome(self):
+        parts = [p.strip() for p in (self.nome_1, self.nome_2, self.cognome) if p and p.strip()]
+        return ' '.join(parts) if parts else None
+
+    def _compute_email_jesap(self):
+        n1 = _slug_for_email(self.nome_1)
+        cg = _slug_for_email(self.cognome)
+        if not n1 or not cg:
+            return None
+        return f'{n1}.{cg}@jesap.it'
+
+    def _compute_eta(self):
+        bd = _parse_iso_date(self.data_di_nascita)
+        if not bd:
+            return None
+        today = date.today()
+        return today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+
+    def _compute_permanenza_mesi(self):
+        start = _parse_iso_date(self.data_entrata)
+        if not start:
+            return None
+        end = _parse_iso_date(self.data_uscita) or date.today()
+        months = (end.year - start.year) * 12 + (end.month - start.month)
+        if end.day < start.day:
+            months -= 1
+        return max(months, 0)
+
+    def _compute_academic_status(self):
+        if not self.anno_di_studi:
+            return None
+        return self._ACADEMIC_STATUS_MAP.get(self.anno_di_studi, self.anno_di_studi)
+
+    def _compute_ruolo_esteso(self):
+        ruolo = (self.ruolo or '').strip()
+        area = (self.area_di_appartenenza or '').strip()
+        if not ruolo:
+            return None
+        if ruolo in self._BOARD_STANDALONE_RUOLI:
+            return ruolo
+        if ruolo == 'Head of' and area:
+            return f'Head of {area}'
+        if area:
+            return f'{ruolo} {area}'
+        return ruolo
+
+    def save(self, *args, **kwargs):
+        self.nome_e_cognome = self._compute_nome_e_cognome()
+        self.email_jesap = self._compute_email_jesap()
+
+        eta_val = self._compute_eta()
+        self.etα = str(eta_val) if eta_val is not None else None
+
+        self.permanenza_mesi_field = self._compute_permanenza_mesi()
+        self.anno_di_studi_1 = self._compute_academic_status()
+        self.ruolo_esteso = self._compute_ruolo_esteso()
+
+        if self.id is None:
+            last = Soci.objects.aggregate(m=Max('id'))['m']
+            self.id = (last or 0) + 1
+
+        super().save(*args, **kwargs)
 
 
 class Socio(Soci):

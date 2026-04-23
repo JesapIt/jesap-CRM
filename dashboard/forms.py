@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django import forms
-from .models import Partnership, PartnershipNonFin, Progetti
+from .models import Partnership, PartnershipNonFin, Progetti, Soci
 from datetime import datetime
 
 
@@ -588,6 +588,158 @@ class ProgettoForm(forms.ModelForm):
         if anno <= 2010:
             raise forms.ValidationError('Il campo Anno deve essere maggiore di 2010.')
         return anno
+
+
+SOCIO_DATE_FIELDS = ('data_di_nascita', 'data_inizio_prova', 'data_entrata', 'data_uscita')
+
+
+def _empty_choice(choices):
+    return [('', '---------')] + list(choices)
+
+
+class SocioBaseForm(forms.ModelForm):
+    sesso = forms.ChoiceField(
+        choices=_empty_choice(Soci.Sesso.choices),
+        required=False,
+        label='Sesso',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    facolta_field = forms.ChoiceField(
+        choices=_empty_choice(Soci.Facolta.choices),
+        required=False,
+        label='Facoltà',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    status = forms.ChoiceField(
+        choices=_empty_choice(Soci.Status.choices),
+        required=False,
+        label='Status',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    area_di_appartenenza = forms.ChoiceField(
+        choices=_empty_choice(Soci.Area.choices),
+        required=False,
+        label='Area di appartenenza',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    anno_di_studi = forms.ChoiceField(
+        choices=_empty_choice(Soci.AnnoStudi.choices),
+        required=False,
+        label='Anno di studi',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    ruolo = forms.ChoiceField(
+        choices=_empty_choice(Soci.Ruolo.choices),
+        required=False,
+        label='Ruolo',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    pm = forms.ChoiceField(
+        choices=[('', '---------'), ('TRUE', 'Sì'), ('FALSE', 'No')],
+        required=False,
+        label='PM',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    senior = forms.ChoiceField(
+        choices=[('', '---------'), ('TRUE', 'Sì'), ('FALSE', 'No')],
+        required=False,
+        label='Senior',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+
+    class Meta:
+        model = Soci
+        fields = [
+            'nome_1', 'nome_2', 'cognome', 'sesso', 'data_di_nascita',
+            'email_personale', 'cellulare',
+            'ruolo', 'area_di_appartenenza', 'status',
+            'data_inizio_prova', 'data_entrata',
+            'facolta_field', 'corso_di_studi', 'anno_di_studi',
+            'pm', 'senior', 'note',
+        ]
+        labels = {
+            'nome_1': 'Nome',
+            'nome_2': 'Secondo nome',
+            'cognome': 'Cognome',
+            'data_di_nascita': 'Data di nascita',
+            'email_personale': 'Email personale',
+            'cellulare': 'Cellulare',
+            'data_inizio_prova': 'Data inizio prova',
+            'data_entrata': 'Data entrata',
+            'corso_di_studi': 'Corso di studi',
+            'note': 'Note',
+        }
+        widgets = {
+            'nome_1': forms.TextInput(attrs={'class': 'form-control'}),
+            'nome_2': forms.TextInput(attrs={'class': 'form-control'}),
+            'cognome': forms.TextInput(attrs={'class': 'form-control'}),
+            'email_personale': forms.EmailInput(attrs={'class': 'form-control'}),
+            'cellulare': forms.TextInput(attrs={'class': 'form-control'}),
+            'data_di_nascita': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'data_inizio_prova': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'data_entrata': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'corso_di_studi': forms.TextInput(attrs={'class': 'form-control'}),
+            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['nome_1'].required = True
+        self.fields['cognome'].required = True
+
+    def _clean_date(self, name):
+        value = self.cleaned_data.get(name)
+        if value in (None, ''):
+            return None
+        try:
+            datetime.strptime(str(value), '%Y-%m-%d')
+        except ValueError:
+            raise forms.ValidationError('La data deve essere nel formato YYYY-MM-DD.')
+        return str(value)
+
+    def clean_data_di_nascita(self):
+        return self._clean_date('data_di_nascita')
+
+    def clean_data_inizio_prova(self):
+        return self._clean_date('data_inizio_prova')
+
+    def clean_data_entrata(self):
+        return self._clean_date('data_entrata')
+
+
+class SocioCreateForm(SocioBaseForm):
+    """Create form: hides data_uscita (membro non ancora uscito)."""
+    pass
+
+
+class SocioUpdateForm(SocioBaseForm):
+    class Meta(SocioBaseForm.Meta):
+        fields = SocioBaseForm.Meta.fields + ['data_uscita']
+        labels = {**SocioBaseForm.Meta.labels, 'data_uscita': 'Data uscita'}
+        widgets = {
+            **SocioBaseForm.Meta.widgets,
+            'data_uscita': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+
+    def clean_data_uscita(self):
+        return self._clean_date('data_uscita')
+
+    def clean(self):
+        cleaned = super().clean()
+        entrata = _parse_iso(cleaned.get('data_entrata'))
+        uscita = _parse_iso(cleaned.get('data_uscita'))
+        if entrata and uscita and uscita < entrata:
+            self.add_error('data_uscita', 'La data uscita non può precedere la data entrata.')
+        return cleaned
+
+
+def _parse_iso(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 class CaseInsensitivePasswordResetForm(PasswordResetForm):
