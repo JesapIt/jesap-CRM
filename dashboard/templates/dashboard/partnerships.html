@@ -69,6 +69,33 @@
     
     .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
     .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+
+    /* Expand row */
+    .row-toggle {
+      width: 32px; height: 32px; padding: 0; border: none; background: transparent;
+      cursor: pointer; color: #475569; border-radius: 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.15s, transform 0.2s;
+    }
+    .row-toggle:hover { background: rgba(99, 102, 241, 0.12); color: #4338CA; }
+    .row-toggle.is-open { transform: rotate(90deg); color: #4338CA; }
+    .row-toggle__icon { width: 16px; height: 16px; }
+
+    .partner-detail { display: none; background: #F8FAFC; }
+    .partner-detail.is-open { display: table-row; }
+    .partner-detail__inner { padding: 18px 24px; border-top: 1px solid #E2E8F0; }
+    .detail-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px 28px;
+    }
+    .detail-item { font-size: 13px; line-height: 1.4; }
+    .detail-item__label {
+      display: block; font-weight: 700; color: #64748B;
+      text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; margin-bottom: 4px;
+    }
+    .detail-item__value { color: #1E293B; word-break: break-word; }
+    .detail-item__value.multiline { white-space: pre-line; }
+    .detail-item__value--muted { color: #94A3B8; }
   </style>
 
   <section class="page">
@@ -155,10 +182,20 @@
           <thead>
             {% if current_tab == 'partnership' %}
             <tr>
-              <th class="partner-sort is-sorted is-asc" data-sort-key="id" data-sort-type="number">ID</th>
-              <th class="partner-sort" data-sort-key="nome" data-sort-type="text">Nome Azienda</th>
+              <th style="width: 40px;"></th>
+              <th class="partner-sort" data-sort-key="codice" data-sort-type="text">Codice</th>
+              <th class="partner-sort is-sorted is-asc" data-sort-key="nome" data-sort-type="text">Partnership</th>
               <th class="partner-sort" data-sort-key="status" data-sort-type="text">Status</th>
-              <th class="partner-sort" data-sort-key="contatti" data-sort-type="text">Contatti</th>
+              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="text">Data firma</th>
+              <th class="partner-sort" data-sort-key="anno" data-sort-type="number">Anno</th>
+              <th>Cartella Drive</th>
+              {% if is_editor %}
+                <th style="text-align: right;">Azioni</th>
+              {% endif %}
+            </tr>
+            {% elif current_tab == 'lead' %}
+            <tr>
+              <th class="partner-sort is-sorted is-asc" data-sort-key="nome" data-sort-type="text">Nome Partnership</th>
               <th>Cartella Drive</th>
               {% if is_editor %}
                 <th style="text-align: right;">Azioni</th>
@@ -181,32 +218,36 @@
             {% if current_tab == 'partnership' %}
               {% if partnerships %}
                 {% for p in partnerships %}
-                <tr class="partner-row">
-                  <td data-sort-key="id"><strong>{{ p.id }}</strong></td>
-                  <td data-sort-key="nome">{{ p.partnership|default:"-" }}</td>
+                <tr class="partner-row" data-row-id="row-{{ forloop.counter }}">
+                  <td>
+                    <button type="button" class="row-toggle" data-toggle-target="row-{{ forloop.counter }}" aria-expanded="false" aria-label="Espandi dettagli">
+                      <svg class="row-toggle__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+                    </button>
+                  </td>
+                  <td data-sort-key="codice"><strong>{{ p.id_codice|default:"-" }}</strong></td>
+                  <td data-sort-key="nome"><strong>{{ p.partnership|default:"-" }}</strong></td>
                   <td data-sort-key="status">
                     <span style="background: #E0E7FF; color: #4338CA; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">
                       {{ p.status_partnership|default:"-" }}
                     </span>
                   </td>
-                  <td data-sort-key="contatti">{{ p.contatti|default:"N/A" }}</td>
+                  <td data-sort-key="data_firma">{{ p.data_firma|default:"-" }}</td>
+                  <td data-sort-key="anno">{{ p.anno|default:"-" }}</td>
                   <td>
-                    {% if p.cartella_sul_drive %}
-                      <a href="{{ p.cartella_sul_drive }}" target="_blank" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;">
-                        📁 Apri Drive
-                      </a>
+                    {% if p.url_cartella %}
+                      <a href="{{ p.url_cartella }}" target="_blank" rel="noopener" style="color: #4F46E5; text-decoration: underline; display: inline-flex; align-items: center; gap: 5px;" onclick="event.stopPropagation()">📁 Apri</a>
                     {% else %}
-                      <span style="color: #9CA3AF;">Nessun link</span>
+                      <span style="color: #9CA3AF;">-</span>
                     {% endif %}
                   </td>
                   {% if is_editor %}
                   <td style="text-align: right;">
-                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                      <a href="{% url 'partnership_update' p.id %}" class="btn-action">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;" onclick="event.stopPropagation()">
+                      <a href="{% url 'partnership_update' p.partnership %}" class="btn-action">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         Modifica
                       </a>
-                      <a href="{% url 'partnership_delete' p.id %}" class="btn-action danger">
+                      <a href="{% url 'partnership_delete' p.partnership %}" class="btn-action danger">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         Elimina
                       </a>
@@ -214,13 +255,95 @@
                   </td>
                   {% endif %}
                 </tr>
+                <tr class="partner-detail" id="row-{{ forloop.counter }}">
+                  <td colspan="{% if is_editor %}8{% else %}7{% endif %}" class="partner-detail__inner">
+                    <div class="detail-grid">
+                      <div class="detail-item">
+                        <span class="detail-item__label">Tipologia</span>
+                        <span class="detail-item__value{% if not p.tipologia %} detail-item__value--muted{% endif %}">{{ p.tipologia|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Oggetto primario</span>
+                        <span class="detail-item__value{% if not p.oggetto_primario %} detail-item__value--muted{% endif %}">{{ p.oggetto_primario|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Durata</span>
+                        <span class="detail-item__value{% if not p.durata %} detail-item__value--muted{% endif %}">{{ p.durata|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Rinnovo</span>
+                        <span class="detail-item__value{% if not p.rinnovo %} detail-item__value--muted{% endif %}">{{ p.rinnovo|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Ultimo rinnovo</span>
+                        <span class="detail-item__value{% if not p.data_ultimo_rinnovo %} detail-item__value--muted{% endif %}">{{ p.data_ultimo_rinnovo|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Fine prevista</span>
+                        <span class="detail-item__value{% if not p.data_fine_prevista %} detail-item__value--muted{% endif %}">{{ p.data_fine_prevista|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">N° progetti</span>
+                        <span class="detail-item__value{% if not p.numero_progetti %} detail-item__value--muted{% endif %}">{{ p.numero_progetti|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">N° partecipanti</span>
+                        <span class="detail-item__value{% if not p.numero_partecipanti %} detail-item__value--muted{% endif %}">{{ p.numero_partecipanti|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-item__label">Compenso economico</span>
+                        <span class="detail-item__value">{% if p.compenso_economico %}Sì{% else %}No{% endif %}</span>
+                      </div>
+                      <div class="detail-item" style="grid-column: span 2;">
+                        <span class="detail-item__label">Cartella Drive (nome)</span>
+                        <span class="detail-item__value{% if not p.cartella_sul_drive %} detail-item__value--muted{% endif %}">{{ p.cartella_sul_drive|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item" style="grid-column: span 2;">
+                        <span class="detail-item__label">Contatti</span>
+                        <span class="detail-item__value multiline{% if not p.contatti %} detail-item__value--muted{% endif %}">{{ p.contatti|default:"—" }}</span>
+                      </div>
+                      <div class="detail-item" style="grid-column: 1 / -1;">
+                        <span class="detail-item__label">Vantaggi partner</span>
+                        <span class="detail-item__value multiline{% if not p.vantaggi_partner %} detail-item__value--muted{% endif %}">{{ p.vantaggi_partner|default:"—" }}</span>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
                 {% endfor %}
               {% else %}
                 <tr>
-                  <td colspan="6" style="text-align: center; padding: 40px; color: #64748B;">Nessun dato presente in questa sezione.</td>
+                  <td colspan="{% if is_editor %}8{% else %}7{% endif %}" style="text-align: center; padding: 40px; color: #64748B;">Nessun dato presente in questa sezione.</td>
                 </tr>
               {% endif %}
-              
+
+            {% elif current_tab == 'lead' %}
+              {% if leads %}
+                {% for p in leads %}
+                <tr class="partner-row">
+                  <td data-sort-key="nome"><strong>{{ p.partnership|default:"-" }}</strong></td>
+                  <td>
+                    {% if p.url_cartella %}
+                      <a href="{{ p.url_cartella }}" target="_blank" rel="noopener" style="color: #4F46E5; text-decoration: underline;">📁 Apri Drive</a>
+                    {% else %}
+                      <span style="color: #9CA3AF;">Nessun link</span>
+                    {% endif %}
+                  </td>
+                  {% if is_editor %}
+                  <td style="text-align: right;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                      <a href="{% url 'partnership_update' p.partnership %}" class="btn-action">Modifica</a>
+                      <a href="{% url 'partnership_delete' p.partnership %}" class="btn-action danger">Elimina</a>
+                    </div>
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="3" style="text-align: center; padding: 40px; color: #64748B;">Nessun lead presente.</td>
+                </tr>
+              {% endif %}
+
             {% elif current_tab == 'non_finalizzate' %}
               {% if dati_tabella %}
                 {% for p in dati_tabella %}
@@ -271,6 +394,28 @@
       const tbody = document.getElementById("table-body");
       if (!tbody) return;
 
+      // --- Expand/collapse riga partnership ---
+      tbody.querySelectorAll(".row-toggle").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const targetId = btn.dataset.toggleTarget;
+          const detail = document.getElementById(targetId);
+          if (!detail) return;
+          const isOpen = detail.classList.toggle("is-open");
+          btn.classList.toggle("is-open", isOpen);
+          btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        });
+      });
+
+      // Click sulla riga (escluse le aree con stopPropagation) apre/chiude
+      tbody.querySelectorAll(".partner-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          const btn = row.querySelector(".row-toggle");
+          if (btn) btn.click();
+        });
+      });
+
+      // --- Sort ---
       const topSelect = document.getElementById("top-sort-select");
       const topDirBtn = document.getElementById("top-sort-dir");
       let currentDir = "asc";
@@ -280,12 +425,18 @@
         const type = (key === "id" || key === "anno") ? "number" : "text";
         topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
 
-        const rows = Array.from(tbody.querySelectorAll(".partner-row"));
-        
-        rows.sort((a, b) => {
-          let cellA = a.querySelector(`[data-sort-key="${key}"]`);
-          let cellB = b.querySelector(`[data-sort-key="${key}"]`);
-          
+        // Raccogli coppie (riga principale, riga dettaglio se presente)
+        const mainRows = Array.from(tbody.querySelectorAll(".partner-row"));
+        const pairs = mainRows.map(row => {
+          const detailId = row.dataset.rowId;
+          const detail = detailId ? tbody.querySelector(`#${detailId}`) : null;
+          return { row, detail };
+        });
+
+        pairs.sort((a, b) => {
+          let cellA = a.row.querySelector(`[data-sort-key="${key}"]`);
+          let cellB = b.row.querySelector(`[data-sort-key="${key}"]`);
+
           let vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
           let vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
 
@@ -297,7 +448,10 @@
         });
 
         const frag = document.createDocumentFragment();
-        rows.forEach(r => frag.appendChild(r));
+        pairs.forEach(p => {
+          frag.appendChild(p.row);
+          if (p.detail) frag.appendChild(p.detail);
+        });
         tbody.appendChild(frag);
       }
 

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django import forms
-from .models import Partnership, PartnershipNonFin, Progetti, Soci
+from .models import Partnership, PartnershipNonFin, Progetti
 from datetime import datetime
 
 
@@ -70,128 +70,162 @@ class MonthYearField(forms.MultiValueField):
 
         raise forms.ValidationError('Il Periodo deve includere mese e anno.')
 
+DATE_PLACEHOLDER = 'GG/MM/AAAA'
+
+
+def _normalize_date_text(value):
+    if value in (None, ''):
+        return ''
+    txt = str(value).strip()
+    if not txt:
+        return ''
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%y'):
+        try:
+            return datetime.strptime(txt, fmt).strftime('%d/%m/%Y')
+        except ValueError:
+            continue
+    raise forms.ValidationError('Data non valida. Usa GG/MM/AAAA.')
+
+
 class PartnershipForm(forms.ModelForm):
     status_partnership = forms.ChoiceField(
-        choices=[('Attiva', 'Attiva'), ('Conclusa', 'Conclusa')],
+        choices=[
+            ('', '---------'),
+            ('Attiva', 'Attiva'),
+            ('Conclusa', 'Conclusa'),
+            ('In trattativa', 'In trattativa (Lead)'),
+        ],
         required=False,
         label='Status',
-        widget=forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 220px;'})
+        widget=forms.Select(attrs={'class': 'form-control'}),
     )
-    compenso_economico = forms.ChoiceField(
-        choices=[('TRUE', 'Sì'), ('FALSE', 'No')],
+    compenso_economico = forms.TypedChoiceField(
+        choices=[('', '---------'), ('True', 'Sì'), ('False', 'No')],
         required=False,
+        coerce=lambda v: v == 'True',
+        empty_value=None,
         label='Compenso economico',
-        widget=forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 220px;'})
+        widget=forms.Select(attrs={'class': 'form-control'}),
     )
 
     class Meta:
         model = Partnership
-        # '__all__' pega todos os campos do models.py, incluindo o campo 'id'
-        fields = '__all__' 
-        
-        # Vamos customizar os rótulos (labels) para ficar mais amigável na tela
+        fields = [
+            'partnership', 'id_codice', 'tipologia', 'oggetto_primario',
+            'status_partnership', 'data_firma', 'anno', 'durata', 'rinnovo',
+            'data_ultimo_rinnovo', 'data_fine_prevista',
+            'numero_progetti', 'numero_partecipanti',
+            'contatti', 'cartella_sul_drive', 'url_cartella',
+            'vantaggi_partner', 'compenso_economico',
+        ]
         labels = {
-            'id': 'ID della Partnership (Codice Manuale)',
-            'partnership': 'Nome Azienda / Partnership',
+            'partnership': 'Nome Partnership (chiave primaria)',
+            'id_codice': 'Codice (es. P001)',
+            'tipologia': 'Tipologia',
+            'oggetto_primario': 'Oggetto primario',
             'status_partnership': 'Status',
+            'data_firma': 'Data firma',
+            'anno': 'Anno',
+            'durata': 'Durata',
+            'rinnovo': 'Rinnovo',
+            'data_ultimo_rinnovo': 'Data ultimo rinnovo',
+            'data_fine_prevista': 'Data fine prevista',
+            'numero_progetti': 'N° progetti',
+            'numero_partecipanti': 'N° partecipanti',
+            'contatti': 'Contatti',
+            'cartella_sul_drive': 'Cartella Drive (nome)',
+            'url_cartella': 'URL Cartella Drive',
+            'vantaggi_partner': 'Vantaggi partner',
             'compenso_economico': 'Compenso economico',
         }
-
-        # Vamos adicionar widgets para facilitar a digitação de datas e estilizar
         widgets = {
-            'id': forms.TextInput(attrs={'placeholder': 'Es: 001 ou PART-001', 'class': 'form-control'}),
-            'data_firma': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'data_fine_prevista': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'data_ultimo_rinnovo': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'anno': forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric', 'pattern': '[0-9]*'}),
+            'partnership':         forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Hinc Coop'}),
+            'id_codice':           forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: P001'}),
+            'tipologia':           forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Azienda / JE italiana / ...'}),
+            'oggetto_primario':    forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Formazione / Visibilità / Progetto / Altro'}),
+            'data_firma':          forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
+            'data_ultimo_rinnovo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
+            'data_fine_prevista':  forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
+            'durata':              forms.TextInput(attrs={'class': 'form-control', 'placeholder': '1 anno / 6 mesi / Indeterminata'}),
+            'rinnovo':             forms.TextInput(attrs={'class': 'form-control'}),
+            'numero_progetti':     forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
+            'numero_partecipanti': forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
+            'contatti':            forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Una email per riga'}),
+            'cartella_sul_drive':  forms.TextInput(attrs={'class': 'form-control'}),
+            'url_cartella':        forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
+            'vantaggi_partner':    forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'anno':                forms.NumberInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        for name, field in self.fields.items():
-            if name == 'id':
-                continue
+        # Pre-compila status compenso da boolean
+        instance = kwargs.get('instance')
+        if instance is not None:
+            if instance.compenso_economico is True:
+                self.initial['compenso_economico'] = 'True'
+            elif instance.compenso_economico is False:
+                self.initial['compenso_economico'] = 'False'
+            else:
+                self.initial['compenso_economico'] = ''
 
+            # PK readonly su update
+            if instance.pk:
+                self.fields['partnership'].disabled = True
+                self.fields['partnership'].help_text = 'Chiave primaria: non modificabile.'
+
+        for name, field in self.fields.items():
             widget = field.widget
             existing_class = widget.attrs.get('class', '').strip()
             if 'form-control' not in existing_class.split():
                 widget.attrs['class'] = f"{existing_class} form-control".strip()
 
-            if isinstance(widget, forms.Textarea):
-                field.widget = forms.TextInput(
-                    attrs={
-                        'class': widget.attrs.get('class', 'form-control'),
-                        'style': 'max-width: 360px; width: 100%;'
-                    }
-                )
-                continue
-
-            if isinstance(widget, forms.TextInput):
-                widget.attrs['style'] = 'max-width: 360px; width: 100%;'
+    def clean_partnership(self):
+        nome = (self.cleaned_data.get('partnership') or '').strip()
+        if not nome:
+            raise forms.ValidationError('Il nome della Partnership è obbligatorio.')
+        return nome
 
     def clean_anno(self):
         anno = self.cleaned_data.get('anno')
         if anno in (None, ''):
-            return anno
-
+            return None
         try:
-            anno_int = int(float(anno))
+            anno_int = int(anno)
         except (TypeError, ValueError):
-            raise forms.ValidationError("Il campo Anno deve contenere un numero intero.")
-
-        if anno_int != float(anno):
-            raise forms.ValidationError("Il campo Anno deve contenere un numero intero.")
-
+            raise forms.ValidationError('Il campo Anno deve essere un numero intero.')
         if anno_int <= 2010:
-            raise forms.ValidationError("Il campo Anno deve essere maggiore di 2010.")
-
+            raise forms.ValidationError('Il campo Anno deve essere maggiore di 2010.')
         return anno_int
 
+    def _clean_int_text(self, name):
+        raw = self.cleaned_data.get(name)
+        if raw in (None, ''):
+            return ''
+        txt = str(raw).strip()
+        if not txt or txt == '-':
+            return txt
+        try:
+            int(txt)
+        except ValueError:
+            raise forms.ValidationError('Inserisci un numero intero valido.')
+        return txt
+
     def clean_numero_progetti(self):
-        numero = self.cleaned_data.get('numero_progetti')
-        if numero and numero.strip():
-            try:
-                int(numero)
-            except ValueError:
-                raise forms.ValidationError("Il numero di progetti deve essere un numero intero valido.")
-        return numero
+        return self._clean_int_text('numero_progetti')
 
     def clean_numero_partecipanti(self):
-        numero = self.cleaned_data.get('numero_partecipanti')
-        if numero and numero.strip():
-            try:
-                int(numero)
-            except ValueError:
-                raise forms.ValidationError("Il numero di partecipanti deve essere un numero intero valido.")
-        return numero
+        return self._clean_int_text('numero_partecipanti')
 
     def clean_data_firma(self):
-        data = self.cleaned_data.get('data_firma')
-        if data and data.strip():
-            try:
-                datetime.strptime(data, '%Y-%m-%d')
-            except ValueError:
-                raise forms.ValidationError("La data di firma deve essere nel formato YYYY-MM-DD.")
-        return data
+        return _normalize_date_text(self.cleaned_data.get('data_firma'))
 
     def clean_data_ultimo_rinnovo(self):
-        data = self.cleaned_data.get('data_ultimo_rinnovo')
-        if data and data.strip():
-            try:
-                datetime.strptime(data, '%Y-%m-%d')
-            except ValueError:
-                raise forms.ValidationError("La data ultimo rinnovo deve essere nel formato YYYY-MM-DD.")
-        return data
+        return _normalize_date_text(self.cleaned_data.get('data_ultimo_rinnovo'))
 
     def clean_data_fine_prevista(self):
-        data = self.cleaned_data.get('data_fine_prevista')
-        if data and data.strip():
-            try:
-                datetime.strptime(data, '%Y-%m-%d')
-            except ValueError:
-                raise forms.ValidationError("La data fine prevista deve essere nel formato YYYY-MM-DD.")
-        return data
+        return _normalize_date_text(self.cleaned_data.get('data_fine_prevista'))
 
 
 class PartnershipNonFinForm(forms.ModelForm):
@@ -588,158 +622,6 @@ class ProgettoForm(forms.ModelForm):
         if anno <= 2010:
             raise forms.ValidationError('Il campo Anno deve essere maggiore di 2010.')
         return anno
-
-
-SOCIO_DATE_FIELDS = ('data_di_nascita', 'data_inizio_prova', 'data_entrata', 'data_uscita')
-
-
-def _empty_choice(choices):
-    return [('', '---------')] + list(choices)
-
-
-class SocioBaseForm(forms.ModelForm):
-    sesso = forms.ChoiceField(
-        choices=_empty_choice(Soci.Sesso.choices),
-        required=False,
-        label='Sesso',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    facolta_field = forms.ChoiceField(
-        choices=_empty_choice(Soci.Facolta.choices),
-        required=False,
-        label='Facoltà',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    status = forms.ChoiceField(
-        choices=_empty_choice(Soci.Status.choices),
-        required=False,
-        label='Status',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    area_di_appartenenza = forms.ChoiceField(
-        choices=_empty_choice(Soci.Area.choices),
-        required=False,
-        label='Area di appartenenza',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    anno_di_studi = forms.ChoiceField(
-        choices=_empty_choice(Soci.AnnoStudi.choices),
-        required=False,
-        label='Anno di studi',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    ruolo = forms.ChoiceField(
-        choices=_empty_choice(Soci.Ruolo.choices),
-        required=False,
-        label='Ruolo',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    pm = forms.ChoiceField(
-        choices=[('', '---------'), ('TRUE', 'Sì'), ('FALSE', 'No')],
-        required=False,
-        label='PM',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-    senior = forms.ChoiceField(
-        choices=[('', '---------'), ('TRUE', 'Sì'), ('FALSE', 'No')],
-        required=False,
-        label='Senior',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-    )
-
-    class Meta:
-        model = Soci
-        fields = [
-            'nome_1', 'nome_2', 'cognome', 'sesso', 'data_di_nascita',
-            'email_personale', 'cellulare',
-            'ruolo', 'area_di_appartenenza', 'status',
-            'data_inizio_prova', 'data_entrata',
-            'facolta_field', 'corso_di_studi', 'anno_di_studi',
-            'pm', 'senior', 'note',
-        ]
-        labels = {
-            'nome_1': 'Nome',
-            'nome_2': 'Secondo nome',
-            'cognome': 'Cognome',
-            'data_di_nascita': 'Data di nascita',
-            'email_personale': 'Email personale',
-            'cellulare': 'Cellulare',
-            'data_inizio_prova': 'Data inizio prova',
-            'data_entrata': 'Data entrata',
-            'corso_di_studi': 'Corso di studi',
-            'note': 'Note',
-        }
-        widgets = {
-            'nome_1': forms.TextInput(attrs={'class': 'form-control'}),
-            'nome_2': forms.TextInput(attrs={'class': 'form-control'}),
-            'cognome': forms.TextInput(attrs={'class': 'form-control'}),
-            'email_personale': forms.EmailInput(attrs={'class': 'form-control'}),
-            'cellulare': forms.TextInput(attrs={'class': 'form-control'}),
-            'data_di_nascita': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'data_inizio_prova': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'data_entrata': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'corso_di_studi': forms.TextInput(attrs={'class': 'form-control'}),
-            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['nome_1'].required = True
-        self.fields['cognome'].required = True
-
-    def _clean_date(self, name):
-        value = self.cleaned_data.get(name)
-        if value in (None, ''):
-            return None
-        try:
-            datetime.strptime(str(value), '%Y-%m-%d')
-        except ValueError:
-            raise forms.ValidationError('La data deve essere nel formato YYYY-MM-DD.')
-        return str(value)
-
-    def clean_data_di_nascita(self):
-        return self._clean_date('data_di_nascita')
-
-    def clean_data_inizio_prova(self):
-        return self._clean_date('data_inizio_prova')
-
-    def clean_data_entrata(self):
-        return self._clean_date('data_entrata')
-
-
-class SocioCreateForm(SocioBaseForm):
-    """Create form: hides data_uscita (membro non ancora uscito)."""
-    pass
-
-
-class SocioUpdateForm(SocioBaseForm):
-    class Meta(SocioBaseForm.Meta):
-        fields = SocioBaseForm.Meta.fields + ['data_uscita']
-        labels = {**SocioBaseForm.Meta.labels, 'data_uscita': 'Data uscita'}
-        widgets = {
-            **SocioBaseForm.Meta.widgets,
-            'data_uscita': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-        }
-
-    def clean_data_uscita(self):
-        return self._clean_date('data_uscita')
-
-    def clean(self):
-        cleaned = super().clean()
-        entrata = _parse_iso(cleaned.get('data_entrata'))
-        uscita = _parse_iso(cleaned.get('data_uscita'))
-        if entrata and uscita and uscita < entrata:
-            self.add_error('data_uscita', 'La data uscita non può precedere la data entrata.')
-        return cleaned
-
-
-def _parse_iso(value):
-    if not value:
-        return None
-    try:
-        return datetime.strptime(str(value), '%Y-%m-%d').date()
-    except ValueError:
-        return None
 
 
 class CaseInsensitivePasswordResetForm(PasswordResetForm):

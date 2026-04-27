@@ -319,13 +319,22 @@ class Socio(Soci):
 
 
 class Partnership(models.Model):
-    id = models.TextField(db_column='ID', primary_key=True)
-    partnership = models.TextField(db_column='Partnership', blank=True, null=True)
+    STATUS_ATTIVA = 'Attiva'
+    STATUS_CONCLUSA = 'Conclusa'
+    STATUS_TRATTATIVA = 'In trattativa'
+    STATUS_CHOICES = [
+        (STATUS_ATTIVA, STATUS_ATTIVA),
+        (STATUS_CONCLUSA, STATUS_CONCLUSA),
+        (STATUS_TRATTATIVA, STATUS_TRATTATIVA),
+    ]
+
+    partnership = models.TextField(db_column='Partnership', primary_key=True)
+    id_codice = models.TextField(db_column='ID', blank=True, null=True)
     tipologia = models.TextField(db_column='Tipologia', blank=True, null=True)
     oggetto_primario = models.TextField(db_column='Oggetto primario della partnership', blank=True, null=True)
     status_partnership = models.TextField(db_column='Status partnership', blank=True, null=True)
     data_firma = models.TextField(db_column='Data firma', blank=True, null=True)
-    anno = models.FloatField(db_column='ANNO', blank=True, null=True)
+    anno = models.IntegerField(db_column='ANNO', blank=True, null=True)
     durata = models.TextField(db_column='Durata', blank=True, null=True)
     rinnovo = models.TextField(db_column='Rinnovo', blank=True, null=True)
     data_ultimo_rinnovo = models.TextField(db_column='Data ultimo rinnovo', blank=True, null=True)
@@ -334,13 +343,17 @@ class Partnership(models.Model):
     numero_partecipanti = models.TextField(db_column='Numero di partecipanti', blank=True, null=True)
     contatti = models.TextField(db_column='Contatti', blank=True, null=True)
     cartella_sul_drive = models.TextField(db_column='Cartella sul drive', blank=True, null=True)
+    url_cartella = models.TextField(db_column='URL Cartella', blank=True, null=True)
     vantaggi_partner = models.TextField(db_column='Vantaggi partner', blank=True, null=True)
-    compenso_economico = models.TextField(db_column='Compenso economico', blank=True, null=True)
-    url_cartella_drive = models.TextField(db_column='Url cartella drive', blank=True, null=True)
+    compenso_economico = models.BooleanField(db_column='Compenso economico', blank=True, null=True)
 
     class Meta:
         managed = False
-        db_table = 'PARTNERSHIP'  # Ho messo tutto minuscolo assumendo che su Supabase si chiami così
+        db_table = 'PARTNERSHIP'
+
+    @property
+    def is_lead(self):
+        return (self.status_partnership or '').strip().lower() == 'in trattativa'
 
 
 class PartnershipNonFin(models.Model):

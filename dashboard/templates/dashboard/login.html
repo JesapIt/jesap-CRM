@@ -12,6 +12,7 @@
     .auth-form input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(138, 59, 134, 0.1); }
     .auth-button { height: 44px; border-radius: 8px; border: none; background: var(--brand); color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
     .auth-button:hover { background: var(--brand-ink); }
+    .auth-button:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.7; }
     .auth-link { text-align: center; margin-top: 20px; font-size: 14px; color: var(--muted); }
     .auth-link a { color: var(--brand); text-decoration: none; font-weight: 600; }
     .auth-link a:hover { text-decoration: underline; }
@@ -34,17 +35,34 @@
         </ul>
     {% endif %}
 
-    <form method="POST" class="auth-form">
+    <form method="POST" class="auth-form" id="login-form" novalidate>
         {% csrf_token %}
-        <label>Username</label>
-        <input type="text" name="username" required>
-        
-        <label>Password</label>
-        <input type="password" name="password" required>
-        
-        <button type="submit" class="auth-button">Entra</button>
+        <label for="login-username">Username o email</label>
+        <input id="login-username" type="text" name="username" autocomplete="username"
+               autocapitalize="off" autocorrect="off" spellcheck="false" required>
+
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" name="password" autocomplete="current-password" required>
+
+        <button type="submit" class="auth-button" id="login-submit" data-default-label="Entra">Entra</button>
         <p class="auth-link" style="margin-top: 8px;"><a href="{% url 'password_reset' %}">Password dimenticata?</a></p>
     </form>
+
+    <script>
+    (function () {
+        var form = document.getElementById('login-form');
+        var btn = document.getElementById('login-submit');
+        var userInput = document.getElementById('login-username');
+        if (!form || !btn || !userInput) return;
+        form.addEventListener('submit', function () {
+            // Sanitizzazione lato client: trim + lowercase
+            userInput.value = (userInput.value || '').trim().toLowerCase();
+            // Loading state: previene doppio submit / click multipli
+            btn.disabled = true;
+            btn.textContent = 'Accesso in corso…';
+        });
+    })();
+    </script>
 
     <p class="auth-link">Non hai un account? <a href="{% url 'register_step1' %}">Registrati</a></p>
 </div>

@@ -101,9 +101,6 @@
           </button>
         </div>
 
-        {% if is_editor %}
-          <a href="{% url 'socio_create' %}" class="btn-action success" style="padding:8px 14px;font-size:0.9rem;">+ Aggiungi Socio</a>
-        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -200,9 +197,6 @@
                 <th>Anno di Studi</th>
               {% endif %}
 
-              {% if is_editor %}
-                <th style="text-align:right;">Azioni</th>
-              {% endif %}
             </tr>
           </thead>
           <tbody id="table-body">
@@ -230,11 +224,6 @@
                   <td>{{ s.anno_di_studi|default:"-" }}</td>
                 {% endif %}
 
-                {% if is_editor %}
-                  <td style="text-align:right;white-space:nowrap;">
-                    <a href="{% url 'socio_update' s.id %}" class="btn-action">Modifica</a>
-                  </td>
-                {% endif %}
               </tr>
               {% endif %}
             {% empty %}
