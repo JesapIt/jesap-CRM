@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from urllib.parse import urlencode
 from .models import Partnership
-from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm, SocioCreateForm, SocioUpdateForm
+from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm
 
 # These are for generating secure email links
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -28,15 +28,18 @@ def is_editor(user):
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
     if request.method == "POST":
-        u = (request.POST.get("username") or "").strip()
-        p = request.POST.get("password")
+        # Sanitizzazione: trim + lowercase su identificativo
+        u = (request.POST.get("username") or "").strip().lower()
+        p = request.POST.get("password") or ""
 
-        user = authenticate(request, username=u, password=p)
-        if user is not None:
+        user = authenticate(request, username=u, password=p) if u and p else None
+        # is_active controllato dal backend (user_can_authenticate)
+        if user is not None and user.is_active:
             login(request, user)
             return redirect(reverse("home"))
 
-        messages.error(request, "Username o password errati.")
+        # Messaggio generico: non rivelare se l'utente esiste o la password è sbagliata
+        messages.error(request, "Credenziali non valide.")
 
     return render(request, "dashboard/login.html")
 
@@ -44,12 +47,17 @@ def login_view(request):
 # --- 2. SUBSCRIBE STEP 1 (Check Database & Send Email) ---
 def register_step1(request):
     if request.method == "POST":
-        email = (request.POST.get("email") or "").strip()
+        # Sanitizzazione: trim + lowercase
+        email = (request.POST.get("email") or "").strip().lower()
 
         if Socio.objects.filter(email_jesap__iexact=email).exists():
             if User.objects.filter(email__iexact=email).exists():
-                messages.error(request, "Questo account è già stato registrato. Vai al Login.")
-                return redirect("login")
+                # Messaggio generico per non rivelare se l'account esiste già
+                messages.success(
+                    request,
+                    "Se l'email è valida, riceverai un link per completare la registrazione.",
+                )
+                return redirect("register_step1")
 
             # Creazione Token Sicuro
             signer = signing.TimestampSigner()
@@ -85,7 +93,11 @@ def register_step1(request):
                 )
                 return redirect("register_step1")
 
-        messages.error(request, "Accesso negato. Questa email non è presente nel database dell'associazione.")
+        # Messaggio generico anti-enumerazione: stessa risposta sia che l'email esista o no
+        messages.success(
+            request,
+            "Se l'email è valida, riceverai un link per completare la registrazione.",
+        )
         return redirect("register_step1")
 
     return render(request, "dashboard/register_step1.html")
@@ -111,20 +123,8 @@ def register_step2(request, token):
             messages.error(request, "La password deve essere di almeno 8 caratteri.")
         else:
             email_clean = email.strip().lower()
-            if email_clean.count("@") != 1:
-                messages.error(request, "Indirizzo email non valido.")
-                return render(request, "dashboard/register_step2.html", {"email": email})
-
-            local_part, domain = email_clean.split("@", 1)
-            local_part = local_part.strip()
-            domain = domain.strip()
-            
-            if not local_part or not domain:
-                messages.error(request, "Indirizzo email non valido.")
-                return render(request, "dashboard/register_step2.html", {"email": email})
-
-            # Username = solo la parte locale (es. mario.rossi), mai l'intera email
-            short_username = local_part.lower()
+            # Email già validata in step1 (formato nome.cognome@jesap.it firmato).
+            short_username = email_clean.split("@", 1)[0]
 
             if User.objects.filter(username__iexact=short_username).exists():
                 messages.error(
@@ -133,12 +133,11 @@ def register_step2(request, token):
                 )
                 return render(request, "dashboard/register_step2.html", {"email": email})
 
-            user = User.objects.create_user(
+            User.objects.create_user(
                 username=short_username,
                 email=email_clean,
                 password=password,
             )
-            user.save()
 
             messages.success(request, f"Account creato! Il tuo username è: {short_username}")
             return redirect("login")
@@ -172,29 +171,30 @@ def partnerships(request):
     }
     
     if tab == "partnership":
-        # 1. Busca inicial
-        queryset = Partnership.objects.all().order_by('partnership')
-        
-        # 2. Pega todos os status únicos para popular o dropdown no HTML
+        queryset = Partnership.objects.exclude(
+            status_partnership__iexact='In trattativa'
+        ).order_by('partnership')
+
         stati_partnership = Partnership.objects.exclude(
             status_partnership__isnull=True
         ).exclude(
             status_partnership__exact=''
+        ).exclude(
+            status_partnership__iexact='In trattativa'
         ).values_list('status_partnership', flat=True).distinct()
-        
+
         context["stati_partnership"] = stati_partnership
-        
-        # 3. Aplica o filtro de busca por texto (Nome ou Contatos, por exemplo)
+
         if search_query:
             queryset = queryset.filter(
-                Q(partnership__icontains=search_query) | 
-                Q(contatti__icontains=search_query)
+                Q(partnership__icontains=search_query) |
+                Q(contatti__icontains=search_query) |
+                Q(id_codice__icontains=search_query)
             )
-            
-        # 4. Aplica o filtro de status do dropdown
+
         if status_filter:
             queryset = queryset.filter(status_partnership=status_filter)
-            
+
         paginator = Paginator(queryset, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
         context["partnerships"] = page_obj
@@ -216,8 +216,18 @@ def partnerships(request):
         context["page_obj"] = page_obj
 
     elif tab == "lead":
-        # Lógica futura para lead partnership
-        context["dati_tabella"] = []
+        queryset = Partnership.objects.filter(
+            status_partnership__iexact='In trattativa'
+        ).order_by('partnership')
+
+        if search_query:
+            queryset = queryset.filter(partnership__icontains=search_query)
+
+        paginator = Paginator(queryset, 25)
+        page_obj = paginator.get_page(request.GET.get("page"))
+        context["leads"] = page_obj
+        context["dati_tabella"] = page_obj
+        context["page_obj"] = page_obj
 
     else:
         context["dati_tabella"] = []
@@ -418,33 +428,6 @@ def admin_demote(request):
     return redirect(reverse("soci") + "?tab=admin")
 
 @user_passes_test(is_editor)
-def socio_create(request):
-    if request.method == 'POST':
-        form = SocioCreateForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Socio creato con successo!")
-            return redirect('soci')
-    else:
-        form = SocioCreateForm()
-    return render(request, 'dashboard/socio_form.html', {'form': form, 'azione': 'Nuovo'})
-
-
-@user_passes_test(is_editor)
-def socio_update(request, pk):
-    socio = get_object_or_404(Soci, id=pk)
-    if request.method == 'POST':
-        form = SocioUpdateForm(request.POST, instance=socio)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Socio aggiornato con successo!")
-            return redirect('soci')
-    else:
-        form = SocioUpdateForm(instance=socio)
-    return render(request, 'dashboard/socio_form.html', {'form': form, 'azione': 'Modifica'})
-
-
-@user_passes_test(is_editor)
 def partnership_create(request):
     if request.method == 'POST':
         form = PartnershipForm(request.POST)
@@ -460,8 +443,7 @@ def partnership_create(request):
 
 @user_passes_test(is_editor)
 def partnership_update(request, pk):
-    # Tenta achar a partnership pelo ID, se não achar, dá erro 404
-    partnership = get_object_or_404(Partnership, id=pk)
+    partnership = get_object_or_404(Partnership, partnership=pk)
     
     if request.method == 'POST':
         form = PartnershipForm(request.POST, instance=partnership)
@@ -477,7 +459,7 @@ def partnership_update(request, pk):
 
 @user_passes_test(is_editor)
 def partnership_delete(request, pk):
-    partnership = get_object_or_404(Partnership, id=pk)
+    partnership = get_object_or_404(Partnership, partnership=pk)
     
     if request.method == 'POST':
         partnership.delete()

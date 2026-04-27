@@ -25,10 +25,8 @@ urlpatterns = [
     path('partnerships/non-finalizzate/nuova/', views.partnership_nonfin_create, name='partnership_nonfin_create'),
     path('partnerships/non-finalizzate/<str:pk>/modifica/', views.partnership_nonfin_update, name='partnership_nonfin_update'),
 
-    # Soci
+    # Soci (read-only: write avviene via sync Sheets -> Supabase)
     path('soci/', views.soci, name='soci'),
-    path('soci/nuovo/', views.socio_create, name='socio_create'),
-    path('soci/<int:pk>/modifica/', views.socio_update, name='socio_update'),
     path('soci/admin-promote/', views.admin_promote, name='admin_promote'),
     path('soci/admin-demote/', views.admin_demote, name='admin_demote'),
 
@@ -48,6 +46,7 @@ urlpatterns = [
             template_name='dashboard/password_reset_form.html',
             email_template_name='registration/password_reset_email.html',
             subject_template_name='registration/password_reset_subject.txt',
+            from_email='noreply@jesap.it',
         ),
         name='password_reset',
     ),

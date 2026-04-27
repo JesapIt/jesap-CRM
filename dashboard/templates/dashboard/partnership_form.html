@@ -1,12 +1,18 @@
 {% extends "dashboard/base_figma.html" %}
+{% load dashboard_extras %}
 
 {% block title %}JESAP ERP - {{ azione }} Partnership{% endblock %}
 
 {% block head %}
 <style>
-  .form-container { max-width: 800px; margin: 24px auto; padding: 0 20px; }
+  .form-container { max-width: 900px; margin: 24px auto; padding: 0 20px; }
   .form-card { background: #fff; padding: 32px; border-radius: 12px; box-shadow: var(--shadow); border: 2px solid var(--soft-line); }
-  .form-group { margin-bottom: 18px; }
+  .form-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--soft-line); }
+  .form-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .form-section__title { font-size: 15px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 16px 0; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .form-group { margin-bottom: 0; }
+  .form-group--full { grid-column: 1 / -1; }
   .form-group label { display: block; font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
   .form-control,
   .form-group input[type="text"],
@@ -30,7 +36,7 @@
     transition: border-color 0.2s, box-shadow 0.2s;
     box-sizing: border-box;
   }
-  .form-group textarea { height: auto; min-height: 96px; padding: 10px 14px; resize: vertical; }
+  .form-group textarea { height: auto; min-height: 80px; padding: 10px 14px; resize: vertical; }
   .form-control:focus,
   .form-group input:focus,
   .form-group select:focus,
@@ -38,15 +44,20 @@
     border-color: var(--brand);
     box-shadow: 0 0 0 4px rgba(138, 59, 134, 0.1);
   }
+  .form-control:disabled, .form-group input:disabled {
+    background: var(--soft-line); color: var(--muted); cursor: not-allowed;
+  }
   .form-group select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--brand) 50%), linear-gradient(135deg, var(--brand) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 36px; cursor: pointer; }
   .field-error { color: #b91c1c; font-size: 13px; margin-top: 6px; }
   .field-help { color: var(--muted); font-size: 13px; margin-top: 6px; }
   .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 28px; }
   .btn-primary, .btn-action { height: 42px; padding: 0 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; border: 2px solid var(--soft-line); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background 0.2s, color 0.2s, border-color 0.2s; }
-  .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
-  .btn-primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); }
-  .btn-action { background: #fff; color: var(--brand); }
-  .btn-action:hover { background: var(--soft-line); color: var(--brand-ink); }
+  .form-container .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .form-container .btn-primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); }
+  .form-container .btn-action { background: #fff; color: var(--brand); }
+  .form-container .btn-action:hover { background: var(--soft-line); color: var(--brand-ink); }
+  .form-errors-global { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 14px; }
+  .form-hint { background: rgba(99, 102, 241, 0.08); color: #4338CA; border: 1px solid rgba(99, 102, 241, 0.25); padding: 10px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 13px; }
 </style>
 {% endblock %}
 
@@ -57,23 +68,112 @@
   </header>
 
   <div class="form-container">
-    <form method="post" class="form-card">
+    <form method="post" class="form-card" novalidate>
       {% csrf_token %}
 
-      {% for field in form %}
-        <div class="form-group">
-          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.errors %}
-            <div class="field-error">
-              {% for error in field.errors %}{{ error }}{% endfor %}
-            </div>
-          {% endif %}
-          {% if field.help_text %}
-            <div class="field-help">{{ field.help_text }}</div>
-          {% endif %}
+      {% if form.non_field_errors %}
+        <div class="form-errors-global">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="form-hint">
+        Lo status <strong>«In trattativa»</strong> sposta automaticamente la riga nella tab <strong>Lead Partnership</strong>.
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Identificazione</h2>
+        <div class="form-grid">
+          {% for name in 'partnership id_codice tipologia oggetto_primario status_partnership'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
         </div>
-      {% endfor %}
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Date e durata</h2>
+        <div class="form-grid">
+          {% for name in 'data_firma anno durata rinnovo data_ultimo_rinnovo data_fine_prevista'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Numeri</h2>
+        <div class="form-grid">
+          {% for name in 'numero_progetti numero_partecipanti'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Contatti & Drive</h2>
+        <div class="form-grid">
+          {% with field=form.contatti %}
+            <div class="form-group form-group--full">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+            </div>
+          {% endwith %}
+
+          {% for name in 'cartella_sul_drive url_cartella'|split:' ' %}
+            {% with field=form|get_field:name %}
+              <div class="form-group">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+              </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2 class="form-section__title">Vantaggi & Compenso</h2>
+        <div class="form-grid">
+          {% with field=form.vantaggi_partner %}
+            <div class="form-group form-group--full">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+            </div>
+          {% endwith %}
+
+          {% with field=form.compenso_economico %}
+            <div class="form-group">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+            </div>
+          {% endwith %}
+        </div>
+      </div>
 
       <div class="form-actions">
         <a href="{% url 'partnerships' %}" class="btn-action">Annulla</a>

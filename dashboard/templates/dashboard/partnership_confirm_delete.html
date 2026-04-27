@@ -35,10 +35,13 @@
 
       <div class="confirm-details">
         <dl>
-          <dt>ID</dt><dd>{{ partnership.id }}</dd>
-          <dt>Nome azienda</dt><dd>{{ partnership.partnership|default:"-" }}</dd>
+          <dt>Nome</dt><dd>{{ partnership.partnership|default:"-" }}</dd>
+          <dt>Codice</dt><dd>{{ partnership.id_codice|default:"-" }}</dd>
+          <dt>Tipologia</dt><dd>{{ partnership.tipologia|default:"-" }}</dd>
           <dt>Status</dt><dd>{{ partnership.status_partnership|default:"-" }}</dd>
-          <dt>Contatti</dt><dd>{{ partnership.contatti|default:"-" }}</dd>
+          <dt>Data firma</dt><dd>{{ partnership.data_firma|default:"-" }}</dd>
+          <dt>Anno</dt><dd>{{ partnership.anno|default:"-" }}</dd>
+          <dt>Contatti</dt><dd style="white-space: pre-line;">{{ partnership.contatti|default:"-" }}</dd>
         </dl>
       </div>
 

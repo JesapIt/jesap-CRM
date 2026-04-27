@@ -40,6 +40,18 @@ const DATA_START  = 6;
 const LOCK_KEY    = "_sb_writing"; // evita loop Supabase→Sheets→Supabase
 const BOOL_FIELDS = new Set(["PM", "SENIOR"]);
 const INT_FIELDS  = new Set(["PERMANENZA (mesi)", "ID"]);
+const STATUS_FIELD     = "STATUS";
+const STATUS_ALLOWED   = "Associato"; // solo righe con questo STATUS finiscono in Supabase
+
+/** True se la riga (oggetto record o array values) ha STATUS = "Associato". */
+function isAllowedStatus_(value) {
+  if (value === null || value === undefined) return false;
+  return String(value).trim().toLowerCase() === STATUS_ALLOWED.toLowerCase();
+}
+
+/** Lock per-riga: doPost mette lock solo sulla riga che sta scrivendo,
+ *  così un edit utente su un'altra riga non viene scartato. */
+function rowLockKey_(row) { return "_sb_lock_" + row; }
 
 // ── Utility ────────────────────────────────────────────────────────────────
 function getSheet_() {
@@ -65,10 +77,9 @@ function formatDate_(d) {
 
 /** Sheet row values → record Supabase (gestisce booleani, interi e date).
  *  Se writableCols è passato, salta le colonne "formula" (non le manda a Supabase). */
-function rowToRecord_(headers, values, writableCols) {
+function rowToRecord_(headers, values, _writableCols /* ignorato: lato upload mandiamo tutto */) {
   const rec = {};
   headers.forEach(function(h, i) {
-    if (writableCols && !writableCols[i]) return; // colonna calcolata da formula → skip
     let v = values[i];
     if (v === "" || v === null || v === undefined) { rec[h] = null; return; }
     if (BOOL_FIELDS.has(h)) {
@@ -201,6 +212,23 @@ function sbDelete_(pkValue) {
     console.error("sbDelete error " + resp.getResponseCode() + ": " + resp.getContentText());
 }
 
+/** DELETE batch via PostgREST ?ID=in.(a,b,c). Una sola chiamata HTTP per chunk. */
+function sbDeleteIn_(pkValues) {
+  if (!pkValues || !pkValues.length) return;
+  const CHUNK = 100;
+  for (let i = 0; i < pkValues.length; i += CHUNK) {
+    const chunk = pkValues.slice(i, i + CHUNK);
+    const list  = chunk.map(function(v) { return encodeURIComponent(v); }).join(",");
+    const resp  = UrlFetchApp.fetch(
+      SB_URL + "/rest/v1/" + TABLE + "?" + PK + "=in.(" + list + ")",
+      { method: "DELETE", headers: sbHeaders_({ "Prefer": "return=minimal" }), muteHttpExceptions: true }
+    );
+    if (resp.getResponseCode() >= 300)
+      console.error("sbDeleteIn error " + resp.getResponseCode() + ": " + resp.getContentText());
+    Utilities.sleep(300); // throttle leggero per evitare quota bandwidth GAS
+  }
+}
+
 function sbFetchAllIds_() {
   const resp = UrlFetchApp.fetch(
     SB_URL + "/rest/v1/" + TABLE + "?select=" + PK,
@@ -215,17 +243,27 @@ function onSheetEdit(e) {
   if (!e || !e.range) return;
   const sheet = e.range.getSheet();
   if (sheet.getName() !== SHEET_TAB) return;
-  if (PROP.getProperty(LOCK_KEY) === "1") return; // scrittura proveniente da Supabase
 
   const row = e.range.getRow();
   if (row < DATA_START) return; // intestazione o righe di riepilogo
+  // Lock per-riga: scartiamo solo se doPost sta scrivendo proprio QUESTA riga.
+  // Edit su altre righe (anche durante un doPost) restano sincronizzati.
+  if (PROP.getProperty(rowLockKey_(row)) === "1") return;
 
-  const headers  = getHeaders_(sheet);
-  const pkIdx    = pkColumnIndex_(headers);
-  const writable = getWritableCols_(sheet, headers.length);
-  const vals     = sheet.getRange(row, 1, 1, headers.length).getValues()[0];
-  const pkValue  = vals[pkIdx];
+  const headers   = getHeaders_(sheet);
+  const pkIdx     = pkColumnIndex_(headers);
+  const statusIdx = headers.indexOf(STATUS_FIELD);
+  const writable  = getWritableCols_(sheet, headers.length);
+  const vals      = sheet.getRange(row, 1, 1, headers.length).getValues()[0];
+  const pkValue   = vals[pkIdx];
   if (!pkValue) return; // riga senza ID → non sync
+
+  // Filtro STATUS: solo "Associato" va su Supabase. Altri status → delete se presente.
+  if (statusIdx !== -1 && !isAllowedStatus_(vals[statusIdx])) {
+    sbDelete_(pkValue);
+    console.log("Sheets→Supabase: skip+delete ID " + pkValue + " (STATUS=" + vals[statusIdx] + ")");
+    return;
+  }
 
   sbUpsert_(rowToRecord_(headers, vals, writable));
   console.log("Sheets→Supabase: upsert ID " + pkValue);
@@ -235,24 +273,28 @@ function onSheetChange(e) {
   if (!e || e.changeType !== "REMOVE_ROW") return;
   if (PROP.getProperty(LOCK_KEY) === "1") return;
 
-  const sheet   = getSheet_();
-  const headers = getHeaders_(sheet);
-  const pkIdx   = pkColumnIndex_(headers);
-  const last    = sheet.getLastRow();
+  const sheet     = getSheet_();
+  const headers   = getHeaders_(sheet);
+  const pkIdx     = pkColumnIndex_(headers);
+  const statusIdx = headers.indexOf(STATUS_FIELD);
+  const last      = sheet.getLastRow();
 
-  const sheetIds = new Set();
+  // Solo gli ID con STATUS=Associato sono "validi" su Supabase
+  const associatoIds = new Set();
   if (last >= DATA_START) {
-    sheet.getRange(DATA_START, pkIdx + 1, last - DATA_START + 1, 1)
-      .getValues().flat().map(String).filter(Boolean)
-      .forEach(function(id) { sheetIds.add(id); });
+    const data = sheet.getRange(DATA_START, 1, last - DATA_START + 1, headers.length).getValues();
+    data.forEach(function(r) {
+      const id = r[pkIdx];
+      if (!id) return;
+      if (statusIdx === -1 || isAllowedStatus_(r[statusIdx])) associatoIds.add(String(id));
+    });
   }
 
-  sbFetchAllIds_().forEach(function(id) {
-    if (!sheetIds.has(id)) {
-      sbDelete_(id);
-      console.log("Sheets→Supabase: delete ID " + id);
-    }
-  });
+  const toDelete = sbFetchAllIds_().filter(function(id) { return !associatoIds.has(id); });
+  if (toDelete.length) {
+    sbDeleteIn_(toDelete);
+    console.log("Sheets→Supabase: delete batch " + toDelete.length + " IDs");
+  }
 }
 
 // ── Direzione 2: Supabase → Sheets (Web App endpoint) ─────────────────────
@@ -269,40 +311,62 @@ function doPost(e) {
     const record     = body.record;
     const old_record = body.old_record;
 
-    PROP.setProperty(LOCK_KEY, "1");
+    // Guard: Supabase deve contenere solo Associati. Se arriva un evento
+    // su una riga non-Associato (es. purge, edit manuale di un Alumnus
+    // residuo) NON tocchiamo il foglio: lo Sheet è la sorgente di verità
+    // per gli stati non-Associato.
+    const relevantStatus =
+      (record && record[STATUS_FIELD]) ||
+      (old_record && old_record[STATUS_FIELD]);
+    if (relevantStatus && !isAllowedStatus_(relevantStatus)) {
+      console.log("doPost: skip evento " + type + " (STATUS=" + relevantStatus + ")");
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, skipped: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     const sheet    = getSheet_();
     const headers  = getHeaders_(sheet);
     const pkIdx    = pkColumnIndex_(headers);
     const writable = getWritableCols_(sheet, headers.length);
+    let touchedRow = -1; // riga su cui doPost scrive: lock solo qui
+    let setGlobalLock = false;
 
-    if (type === "DELETE") {
-      const row = findRowByPK_(sheet, pkIdx, old_record && old_record[PK]);
-      if (row > 0) { sheet.deleteRow(row); console.log("Supabase→Sheets: delete ID " + old_record[PK]); }
-    } else {
-      const pkValue = record[PK];
-      const rowVals = recordToRow_(headers, record);
-      const row     = findRowByPK_(sheet, pkIdx, pkValue);
-      if (row > 0) {
-        writeRow_(sheet, row, headers, rowVals, writable);
-        console.log("Supabase→Sheets: update ID " + pkValue);
+    try {
+      if (type === "DELETE") {
+        const row = findRowByPK_(sheet, pkIdx, old_record && old_record[PK]);
+        if (row > 0) {
+          touchedRow = row;
+          PROP.setProperty(rowLockKey_(row), "1");
+          PROP.setProperty(LOCK_KEY, "1"); // blocca sweep di onSheetChange durante deleteRow
+          setGlobalLock = true;
+          sheet.deleteRow(row);
+          console.log("Supabase→Sheets: delete ID " + old_record[PK]);
+        }
       } else {
-        const newRow = findAppendRow_(sheet, pkIdx);
-        writeRow_(sheet, newRow, headers, rowVals, writable);
-        console.log("Supabase→Sheets: insert ID " + pkValue + " riga " + newRow);
+        const pkValue = record[PK];
+        const rowVals = recordToRow_(headers, record);
+        const row     = findRowByPK_(sheet, pkIdx, pkValue);
+        const target  = (row > 0) ? row : findAppendRow_(sheet, pkIdx);
+        touchedRow = target;
+        PROP.setProperty(rowLockKey_(target), "1");
+        writeRow_(sheet, target, headers, rowVals, writable);
+        console.log("Supabase→Sheets: " + (row > 0 ? "update" : "insert") + " ID " + pkValue + " riga " + target);
       }
-    }
 
-    return ContentService.createTextOutput(JSON.stringify({ ok: true }))
-      .setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } finally {
+      if (touchedRow > 0) {
+        Utilities.sleep(1500);
+        PROP.deleteProperty(rowLockKey_(touchedRow));
+      }
+      if (setGlobalLock) PROP.deleteProperty(LOCK_KEY);
+    }
 
   } catch (err) {
     console.error("doPost error: " + err);
     return ContentService.createTextOutput(JSON.stringify({ error: String(err) }))
       .setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    Utilities.sleep(1500); // lascia sedimentare le scritture prima di riabilitare i trigger
-    PROP.deleteProperty(LOCK_KEY);
   }
 }
 
@@ -394,14 +458,41 @@ function initialPushSheetToSupabase() {
   const writable = getWritableCols_(sheet, headers.length);
   const rows     = sheet.getRange(DATA_START, 1, last - DATA_START + 1, headers.length).getValues();
   const recs     = rows.map(function(r) { return rowToRecord_(headers, r, writable); })
-                       .filter(function(r) { return r[PK] !== null; });
+                       .filter(function(r) { return r[PK] !== null; })
+                       .filter(function(r) { return isAllowedStatus_(r[STATUS_FIELD]); });
   try {
     PROP.setProperty(LOCK_KEY, "1");
     for (let i = 0; i < recs.length; i += 500) sbUpsert_(recs.slice(i, i + 500));
-    console.log("✓ Push iniziale completato: " + recs.length + " righe");
+    console.log("✓ Push iniziale completato: " + recs.length + " righe (solo STATUS=" + STATUS_ALLOWED + ")");
   } finally {
     PROP.deleteProperty(LOCK_KEY);
   }
+}
+
+/**
+ * Pulisce Supabase rimuovendo gli ID il cui STATUS nello Sheet ≠ "Associato".
+ * Esegui una volta dopo il deploy del filtro per riallineare lo stato.
+ */
+function purgeNonAssociatiFromSupabase() {
+  const sheet     = getSheet_();
+  const headers   = getHeaders_(sheet);
+  const pkIdx     = pkColumnIndex_(headers);
+  const statusIdx = headers.indexOf(STATUS_FIELD);
+  if (statusIdx === -1) { console.error("Colonna STATUS non trovata"); return; }
+  const last = sheet.getLastRow();
+
+  const associatoIds = new Set();
+  if (last >= DATA_START) {
+    const data = sheet.getRange(DATA_START, 1, last - DATA_START + 1, headers.length).getValues();
+    data.forEach(function(r) {
+      const id = r[pkIdx];
+      if (id && isAllowedStatus_(r[statusIdx])) associatoIds.add(String(id));
+    });
+  }
+
+  const toDelete = sbFetchAllIds_().filter(function(id) { return !associatoIds.has(id); });
+  sbDeleteIn_(toDelete);
+  console.log("✓ Purge completato: rimossi " + toDelete.length + " ID non-Associato da Supabase");
 }
 
 // ══════════════════════════════════════════════════════════════════════════

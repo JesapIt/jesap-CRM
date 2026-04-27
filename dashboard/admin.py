@@ -23,7 +23,9 @@ class SocioAdmin(admin.ModelAdmin):
 
 @admin.register(Partnership)
 class PartnershipAdmin(admin.ModelAdmin):
-    list_display = ('id', 'partnership', 'status_partnership', 'contatti', 'cartella_sul_drive')
+    list_display = ('partnership', 'id_codice', 'status_partnership', 'tipologia', 'anno', 'data_firma')
+    list_filter = ('status_partnership', 'tipologia', 'anno')
+    search_fields = ('partnership', 'id_codice', 'contatti')
 
 @admin.register(PartnershipNonFin)
 class PartnershipNonFinAdmin(admin.ModelAdmin):
