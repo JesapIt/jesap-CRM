@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django import forms
 from .models import Partnership, PartnershipNonFin, Progetti
+from . import choices as ch
 from datetime import datetime
 
 
@@ -88,19 +89,38 @@ def _normalize_date_text(value):
 
 
 class PartnershipForm(forms.ModelForm):
+    tipologia = forms.ChoiceField(
+        choices=ch.PARTNERSHIP_TIPOLOGIA_CHOICES,
+        required=False,
+        label='Tipologia',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    oggetto_primario = forms.ChoiceField(
+        choices=ch.PARTNERSHIP_OGGETTO_CHOICES,
+        required=False,
+        label='Oggetto primario',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
     status_partnership = forms.ChoiceField(
-        choices=[
-            ('', '---------'),
-            ('Attiva', 'Attiva'),
-            ('Conclusa', 'Conclusa'),
-            ('In trattativa', 'In trattativa (Lead)'),
-        ],
+        choices=ch.PARTNERSHIP_STATUS_CHOICES,
         required=False,
         label='Status',
         widget=forms.Select(attrs={'class': 'form-control'}),
     )
+    durata = forms.ChoiceField(
+        choices=ch.PARTNERSHIP_DURATA_CHOICES,
+        required=False,
+        label='Durata',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    rinnovo = forms.ChoiceField(
+        choices=ch.PARTNERSHIP_RINNOVO_CHOICES,
+        required=False,
+        label='Rinnovo',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
     compenso_economico = forms.TypedChoiceField(
-        choices=[('', '---------'), ('True', 'Sì'), ('False', 'No')],
+        choices=ch.BOOL_SI_NO_CHOICES,
         required=False,
         coerce=lambda v: v == 'True',
         empty_value=None,
@@ -141,13 +161,9 @@ class PartnershipForm(forms.ModelForm):
         widgets = {
             'partnership':         forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Hinc Coop'}),
             'id_codice':           forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: P001'}),
-            'tipologia':           forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Azienda / JE italiana / ...'}),
-            'oggetto_primario':    forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Formazione / Visibilità / Progetto / Altro'}),
             'data_firma':          forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
             'data_ultimo_rinnovo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
             'data_fine_prevista':  forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
-            'durata':              forms.TextInput(attrs={'class': 'form-control', 'placeholder': '1 anno / 6 mesi / Indeterminata'}),
-            'rinnovo':             forms.TextInput(attrs={'class': 'form-control'}),
             'numero_progetti':     forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
             'numero_partecipanti': forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
             'contatti':            forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Una email per riga'}),
@@ -169,6 +185,24 @@ class PartnershipForm(forms.ModelForm):
                 self.initial['compenso_economico'] = 'False'
             else:
                 self.initial['compenso_economico'] = ''
+
+            # Normalizza valori legacy verso i choices ufficiali (case-insensitive).
+            # Così un record con "in trattativa" matcha "In trattativa", etc.
+            self.initial['tipologia'] = ch.normalize_to_choice(
+                getattr(instance, 'tipologia', None), ch.PARTNERSHIP_TIPOLOGIA_VALUES,
+            )
+            self.initial['oggetto_primario'] = ch.normalize_to_choice(
+                getattr(instance, 'oggetto_primario', None), ch.PARTNERSHIP_OGGETTO_VALUES,
+            )
+            self.initial['status_partnership'] = ch.normalize_to_choice(
+                getattr(instance, 'status_partnership', None), ch.PARTNERSHIP_STATUS_VALUES,
+            )
+            self.initial['durata'] = ch.normalize_to_choice(
+                getattr(instance, 'durata', None), ch.PARTNERSHIP_DURATA_VALUES,
+            )
+            self.initial['rinnovo'] = ch.normalize_to_choice(
+                getattr(instance, 'rinnovo', None), ch.PARTNERSHIP_RINNOVO_VALUES,
+            )
 
             # PK readonly su update
             if instance.pk:
@@ -294,15 +328,6 @@ class PartnershipNonFinForm(forms.ModelForm):
         return f'{month}/{year}'
 
 
-STATO_PROGETTO_CHOICES = [
-    ('', '---------'),
-    ('Stand-by', 'Stand-by'),
-    ('Annullato', 'Annullato'),
-    ('In Corso', 'In Corso'),
-    ('Concluso', 'Concluso'),
-]
-
-
 def _parse_date_ddmmyyyy_to_iso(value):
     if not value:
         return ''
@@ -380,14 +405,38 @@ def _extract_number_from_percentage(raw):
 
 
 class ProgettoForm(forms.ModelForm):
+    tipologia_cliente = forms.ChoiceField(
+        choices=ch.TIPOLOGIA_CLIENTE_CHOICES,
+        required=False,
+        label='Tipologia cliente',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    tipologia_di_progetto = forms.ChoiceField(
+        choices=ch.TIPOLOGIA_PROGETTO_CHOICES,
+        required=False,
+        label='Tipologia di progetto',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
     stato = forms.ChoiceField(
-        choices=STATO_PROGETTO_CHOICES,
+        choices=ch.STATO_PROGETTO_CHOICES,
         required=False,
         label='Stato',
         widget=forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 220px;'}),
     )
+    area_di_pertinenza = forms.ChoiceField(
+        choices=ch.AREA_PERTINENZA_CHOICES,
+        required=False,
+        label='Area di pertinenza',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    provenienza = forms.ChoiceField(
+        choices=ch.PROVENIENZA_CHOICES,
+        required=False,
+        label='Provenienza',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
     coinvolgimento_della_pubblica_amministrazione = forms.TypedChoiceField(
-        choices=[('', '---------'), ('True', 'Sì'), ('False', 'No')],
+        choices=ch.BOOL_SI_NO_CHOICES,
         required=False,
         coerce=lambda v: v == 'True',
         empty_value=None,
@@ -507,11 +556,7 @@ class ProgettoForm(forms.ModelForm):
             'codice_progetto': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: PROG-001'}),
             'nome_progetto': forms.TextInput(attrs={'class': 'form-control'}),
             'cliente': forms.TextInput(attrs={'class': 'form-control'}),
-            'tipologia_cliente': forms.TextInput(attrs={'class': 'form-control'}),
-            'tipologia_di_progetto': forms.TextInput(attrs={'class': 'form-control'}),
-            'area_di_pertinenza': forms.TextInput(attrs={'class': 'form-control'}),
             'pm': forms.TextInput(attrs={'class': 'form-control'}),
-            'provenienza': forms.TextInput(attrs={'class': 'form-control'}),
             'data_primo_contatto': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'data_firma_contratto': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'data_inizio': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
@@ -555,6 +600,23 @@ class ProgettoForm(forms.ModelForm):
                 self.initial['coinvolgimento_della_pubblica_amministrazione'] = 'False'
             else:
                 self.initial['coinvolgimento_della_pubblica_amministrazione'] = ''
+
+            # Normalizza valori legacy verso i choices ufficiali (case-insensitive).
+            self.initial['tipologia_cliente'] = ch.normalize_to_choice(
+                getattr(instance, 'tipologia_cliente', None), ch.TIPOLOGIA_CLIENTE_VALUES,
+            )
+            self.initial['tipologia_di_progetto'] = ch.normalize_to_choice(
+                getattr(instance, 'tipologia_di_progetto', None), ch.TIPOLOGIA_PROGETTO_VALUES,
+            )
+            self.initial['stato'] = ch.normalize_to_choice(
+                getattr(instance, 'stato', None), ch.STATO_PROGETTO_VALUES,
+            )
+            self.initial['area_di_pertinenza'] = ch.normalize_to_choice(
+                getattr(instance, 'area_di_pertinenza', None), ch.AREA_PERTINENZA_VALUES,
+            )
+            self.initial['provenienza'] = ch.normalize_to_choice(
+                getattr(instance, 'provenienza', None), ch.PROVENIENZA_VALUES,
+            )
 
     def clean_codice_progetto(self):
         value = (self.cleaned_data.get('codice_progetto') or '').strip()

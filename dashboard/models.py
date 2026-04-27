@@ -7,6 +7,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Max
 
+from . import choices as ch
+
 
 def _parse_iso_date(value):
     if value in (None, ''):
@@ -76,12 +78,12 @@ class Progetti(models.Model):
     codice_progetto = models.TextField(db_column='CODICE PROGETTO', primary_key=True, blank=True)
     nome_progetto = models.TextField(db_column='NOME PROGETTO', blank=True, null=True)
     cliente = models.TextField(db_column='CLIENTE', blank=True, null=True)
-    tipologia_cliente = models.TextField(db_column='TIPOLOGIA CLIENTE', blank=True, null=True)
-    tipologia_di_progetto = models.TextField(db_column='TIPOLOGIA DI PROGETTO', blank=True, null=True)
-    stato = models.TextField(db_column='STATO', blank=True, null=True)
-    area_di_pertinenza = models.TextField(db_column='AREA DI PERTINENZA', blank=True, null=True)
+    tipologia_cliente = models.TextField(db_column='TIPOLOGIA CLIENTE', blank=True, null=True, choices=[(v, v) for v in ch.TIPOLOGIA_CLIENTE_VALUES])
+    tipologia_di_progetto = models.TextField(db_column='TIPOLOGIA DI PROGETTO', blank=True, null=True, choices=[(v, v) for v in ch.TIPOLOGIA_PROGETTO_VALUES])
+    stato = models.TextField(db_column='STATO', blank=True, null=True, choices=[(v, v) for v in ch.STATO_PROGETTO_VALUES])
+    area_di_pertinenza = models.TextField(db_column='AREA DI PERTINENZA', blank=True, null=True, choices=[(v, v) for v in ch.AREA_PERTINENZA_VALUES])
     pm = models.TextField(db_column='PM', blank=True, null=True)
-    provenienza = models.TextField(db_column='PROVENIENZA', blank=True, null=True)
+    provenienza = models.TextField(db_column='PROVENIENZA', blank=True, null=True, choices=[(v, v) for v in ch.PROVENIENZA_VALUES])
     data_primo_contatto = models.TextField(db_column='DATA PRIMO CONTATTO', blank=True, null=True)
     data_firma_contratto = models.TextField(db_column='DATA FIRMA CONTRATTO', blank=True, null=True)
     data_inizio = models.TextField(db_column='DATA INIZIO', blank=True, null=True)
@@ -330,13 +332,13 @@ class Partnership(models.Model):
 
     partnership = models.TextField(db_column='Partnership', primary_key=True)
     id_codice = models.TextField(db_column='ID', blank=True, null=True)
-    tipologia = models.TextField(db_column='Tipologia', blank=True, null=True)
-    oggetto_primario = models.TextField(db_column='Oggetto primario della partnership', blank=True, null=True)
-    status_partnership = models.TextField(db_column='Status partnership', blank=True, null=True)
+    tipologia = models.TextField(db_column='Tipologia', blank=True, null=True, choices=[(v, v) for v in ch.PARTNERSHIP_TIPOLOGIA_VALUES])
+    oggetto_primario = models.TextField(db_column='Oggetto primario della partnership', blank=True, null=True, choices=[(v, v) for v in ch.PARTNERSHIP_OGGETTO_VALUES])
+    status_partnership = models.TextField(db_column='Status partnership', blank=True, null=True, choices=[(v, v) for v in ch.PARTNERSHIP_STATUS_VALUES])
     data_firma = models.TextField(db_column='Data firma', blank=True, null=True)
     anno = models.IntegerField(db_column='ANNO', blank=True, null=True)
-    durata = models.TextField(db_column='Durata', blank=True, null=True)
-    rinnovo = models.TextField(db_column='Rinnovo', blank=True, null=True)
+    durata = models.TextField(db_column='Durata', blank=True, null=True, choices=[(v, v) for v in ch.PARTNERSHIP_DURATA_VALUES])
+    rinnovo = models.TextField(db_column='Rinnovo', blank=True, null=True, choices=[(v, v) for v in ch.PARTNERSHIP_RINNOVO_VALUES])
     data_ultimo_rinnovo = models.TextField(db_column='Data ultimo rinnovo', blank=True, null=True)
     data_fine_prevista = models.TextField(db_column='Data fine prevista', blank=True, null=True)
     numero_progetti = models.TextField(db_column='Numero di progetti prodotti dalle Partnership', blank=True, null=True)
