@@ -9,6 +9,7 @@ from django.db.models import Q
 from urllib.parse import urlencode
 from .models import Partnership
 from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm
+from . import choices as ch
 
 # These are for generating secure email links
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -175,15 +176,8 @@ def partnerships(request):
             status_partnership__iexact='In trattativa'
         ).order_by('partnership')
 
-        stati_partnership = Partnership.objects.exclude(
-            status_partnership__isnull=True
-        ).exclude(
-            status_partnership__exact=''
-        ).exclude(
-            status_partnership__iexact='In trattativa'
-        ).values_list('status_partnership', flat=True).distinct()
-
-        context["stati_partnership"] = stati_partnership
+        # Dropdown filtro: valori ufficiali della planilha (esclude Lead).
+        context["stati_partnership"] = ch.PARTNERSHIP_STATUS_OFFICIAL_VALUES
 
         if search_query:
             queryset = queryset.filter(
@@ -241,13 +235,8 @@ def progetti(request):
 
     queryset = Progetti.objects.all().order_by('nome_progetto')
 
-    stati = (
-        Progetti.objects.exclude(stato__isnull=True)
-        .exclude(stato__exact='')
-        .exclude(stato='None')
-        .values_list('stato', flat=True)
-        .distinct()
-    )
+    # Dropdown filtro: valori ufficiali della planilha.
+    stati = ch.STATO_PROGETTO_VALUES
 
     if search_query:
         queryset = queryset.filter(
