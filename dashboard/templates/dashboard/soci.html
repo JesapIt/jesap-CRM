@@ -1,6 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP ERP - Soci{% endblock %}
+{% block title %}JESAP Gestionale - Soci{% endblock %}
 
 {% block content %}
   <style>
@@ -116,7 +116,7 @@
             <tr>
               <th>Nome e Cognome</th>
               <th>Email @jesap</th>
-              {% if request.user.is_superuser %}
+              {% if can_manage_admins %}
                 <th style="text-align:right;">Azioni</th>
               {% endif %}
             </tr>
@@ -126,16 +126,18 @@
             <tr class="soci-row">
               <td>{{ u.get_full_name|default:u.username }}</td>
               <td>{{ u.email|default:"-" }}</td>
-              {% if request.user.is_superuser %}
+              {% if can_manage_admins %}
               <td style="text-align:right;">
-                {% if u != request.user %}
+                {% if u == request.user %}
+                  <span style="color:#94a3b8;font-size:13px;">Tu</span>
+                {% elif u.is_superuser and not request.user.is_superuser %}
+                  <span style="color:#94a3b8;font-size:13px;">Superuser</span>
+                {% else %}
                 <form method="post" action="{% url 'admin_demote' %}" style="display:inline;" onsubmit="return confirm('Rimuovere {{ u.username }} dagli admin?');">
                   {% csrf_token %}
                   <input type="hidden" name="user_id" value="{{ u.pk }}">
                   <button type="submit" class="btn-action danger">Rimuovi da admin</button>
                 </form>
-                {% else %}
-                  <span style="color:#94a3b8;font-size:13px;">Tu</span>
                 {% endif %}
               </td>
               {% endif %}
@@ -147,8 +149,8 @@
         </table>
       </div>
 
-      {# --- Promozione admin (solo superuser) --- #}
-      {% if request.user.is_superuser %}
+      {# --- Promozione admin (admin o superuser) --- #}
+      {% if can_manage_admins %}
       <div class="admin-add-section">
         <h3>Aggiungi admin</h3>
         <form method="post" action="{% url 'admin_promote' %}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">

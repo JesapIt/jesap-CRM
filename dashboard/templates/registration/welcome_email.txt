@@ -1,11 +1,11 @@
 Benvenuto, {{ user.username }}!
 
-Il tuo account sul ERP JESAP è stato creato con successo.
+Il tuo account sul Gestionale JESAP è stato creato con successo.
 
 Username: {{ user.username }}
 Email: {{ user.email }}
 
-Accedi all'ERP: {{ login_url }}
+Accedi al Gestionale: {{ login_url }}
 
 Se non hai richiesto questo account, ignora questa email.
 

@@ -2,7 +2,7 @@
 {% load static %}
 {% load dashboard_extras %}
 
-{% block title %}JESAP ERP - Home{% endblock %}
+{% block title %}JESAP Gestionale - Home{% endblock %}
 
 {% block head %}
 <style>
@@ -40,11 +40,11 @@
   <section class="hero hero--home">
     <div class="hero__inner">
       <div class="hero__avatar" aria-hidden="true">{{ request.user|user_initials }}</div>
-      <h1 class="hero__title">
+      <h1 class="hero__title" style="color: #ffffff;">
         {% if user.is_authenticated %}
-          Benvenuto nell'ERP, {{ request.user|user_first_name }}!
+          Benvenuto nel Gestionale di Jesap, {{ request.user|user_first_name }}!
         {% else %}
-          Benvenuto nell'ERP!
+          Benvenuto nel Gestionale di Jesap!
         {% endif %}
       </h1>
     </div>
@@ -54,7 +54,7 @@
     <div class="welcome-card">
       <h2>Il gestionale della JESAP Junior Enterprise</h2>
       <p>
-        Questo ERP è lo strumento ufficiale dell'associazione per gestire in modo efficiente
+        Questo Gestionale è lo strumento ufficiale dell'associazione per gestire in modo efficiente
         <strong>Progetti</strong>, <strong>Leads</strong> e <strong>Partnerships</strong>.
         Utilizza il menu di navigazione in alto per accedere alle diverse sezioni.
       </p>
