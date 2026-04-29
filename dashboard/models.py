@@ -321,14 +321,64 @@ class Socio(Soci):
 
 
 class Partnership(models.Model):
+    # ── STATUS (combaciano col CHECK constraint Supabase) ────────────────
     STATUS_ATTIVA = 'Attiva'
     STATUS_CONCLUSA = 'Conclusa'
+    STATUS_RINNOVO = 'In fase di rinnovo'
     STATUS_TRATTATIVA = 'In trattativa'
+    STATUS_NON_FINALIZZATA = 'Non finalizzata'
+
     STATUS_CHOICES = [
         (STATUS_ATTIVA, STATUS_ATTIVA),
         (STATUS_CONCLUSA, STATUS_CONCLUSA),
+        (STATUS_RINNOVO, STATUS_RINNOVO),
         (STATUS_TRATTATIVA, STATUS_TRATTATIVA),
+        (STATUS_NON_FINALIZZATA, STATUS_NON_FINALIZZATA),
     ]
+
+    # Stati che vanno nella tab "Partnership" principale
+    STATUS_PARTNERSHIP_TAB = (STATUS_ATTIVA, STATUS_CONCLUSA, STATUS_RINNOVO)
+
+    # ── TIPOLOGIA (combacia col dropdown Sheets) ─────────────────────────
+    TIPOLOGIA_AZIENDA = 'Azienda'
+    TIPOLOGIA_JE_IT = 'JE italiana'
+    TIPOLOGIA_JE_ES = 'JE estera'
+    TIPOLOGIA_ENTE_PUBBLICO = 'Ente pubblico'
+
+    TIPOLOGIA_CHOICES = [
+        (TIPOLOGIA_AZIENDA, TIPOLOGIA_AZIENDA),
+        (TIPOLOGIA_JE_IT, TIPOLOGIA_JE_IT),
+        (TIPOLOGIA_JE_ES, TIPOLOGIA_JE_ES),
+        (TIPOLOGIA_ENTE_PUBBLICO, TIPOLOGIA_ENTE_PUBBLICO),
+    ]
+
+    # ── OGGETTO PRIMARIO (combacia col dropdown Sheets) ──────────────────
+    OGGETTO_PROGETTO = 'Progetto'
+    OGGETTO_VISIBILITA = 'Visibilità'
+    OGGETTO_FORMAZIONE = 'Formazione'
+    OGGETTO_ALTRO = 'Altro'
+
+    OGGETTO_CHOICES = [
+        (OGGETTO_PROGETTO, OGGETTO_PROGETTO),
+        (OGGETTO_VISIBILITA, OGGETTO_VISIBILITA),
+        (OGGETTO_FORMAZIONE, OGGETTO_FORMAZIONE),
+        (OGGETTO_ALTRO, OGGETTO_ALTRO),
+    ]
+
+    # ── Tipi di create form (per la view partnership_create) ─────────────
+    KIND_FULL = 'full'              # Partnership "vere" — tutti i campi
+    KIND_LEAD = 'lead'              # Lead/Trattativa — solo nome + URL Drive
+    KIND_NON_FIN = 'non_finalizzata'  # Non finalizzate — campi minimi
+
+    KIND_TO_STATUS = {
+        KIND_LEAD:    STATUS_TRATTATIVA,
+        KIND_NON_FIN: STATUS_NON_FINALIZZATA,
+    }
+    KIND_TO_TAB = {
+        KIND_LEAD:    'lead',
+        KIND_NON_FIN: 'non_finalizzate',
+        KIND_FULL:    'partnership',
+    }
 
     partnership = models.TextField(db_column='Partnership', primary_key=True)
     id_codice = models.TextField(db_column='ID', blank=True, null=True)
@@ -357,17 +407,14 @@ class Partnership(models.Model):
     def is_lead(self):
         return (self.status_partnership or '').strip().lower() == 'in trattativa'
 
+    @property
+    def is_non_finalizzata(self):
+        return (self.status_partnership or '').strip().lower() == 'non finalizzata'
 
-class PartnershipNonFin(models.Model):
-    realta = models.TextField(db_column='Realtà', primary_key=True)
-    contatti = models.TextField(db_column='Contatti', blank=True, null=True)
-    periodo = models.TextField(db_column='Periodo', blank=True, null=True)
-    anno = models.BigIntegerField(db_column='Anno', blank=True, null=True)
-    cartella = models.TextField(db_column='Cartella', blank=True, null=True)
 
-    class Meta:
-        managed = False
-        db_table = 'PARTNERSHIP_NON_FIN'
+# NOTA: PartnershipNonFin è stato rimosso. La tabella PARTNERSHIP_NON_FIN
+# su Supabase è stata droppata: i dati delle partnership non finalizzate
+# vivono ora dentro Partnership con status='Non finalizzata'.
 
 
 class AuditLog(models.Model):

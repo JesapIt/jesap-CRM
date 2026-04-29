@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
 from django import forms
-from .models import Partnership, PartnershipNonFin, Progetti
+from .models import Partnership, Progetti
 from . import choices as ch
 from datetime import datetime
 
@@ -262,70 +262,112 @@ class PartnershipForm(forms.ModelForm):
         return _normalize_date_text(self.cleaned_data.get('data_fine_prevista'))
 
 
-class PartnershipNonFinForm(forms.ModelForm):
-    periodo = MonthYearField(label='Periodo', required=False)
-    anno = forms.IntegerField(
-        required=False,
-        label='Anno',
-        widget=forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric', 'pattern': '[0-9]*'}),
-    )
+# ============================================================
+# Partnership "kind" forms (Lead / Non finalizzata)
+# Architettura unificata: una sola tabella PARTNERSHIP separata via Status.
+# PartnershipForm (sopra) resta il form "Full" permissivo. PartnershipFullForm
+# è un alias backward-compatible con import storico.
+# ============================================================
+
+PartnershipFullForm = PartnershipForm
+
+
+class LeadPartnershipForm(forms.ModelForm):
+    """Form ridotto per Lead Partnership (status auto = In trattativa)."""
 
     class Meta:
-        model = PartnershipNonFin
-        fields = '__all__'
+        model = Partnership
+        fields = ['partnership', 'url_cartella']
         labels = {
-            'realta': 'Realtà',
-            'contatti': 'Contatti',
-            'periodo': 'Periodo',
-            'anno': 'Anno',
-            'cartella': 'Cartella',
+            'partnership': 'Nome Partnership',
+            'url_cartella': 'URL Cartella Drive',
         }
         widgets = {
-            'realta': forms.TextInput(attrs={'class': 'form-control'}),
-            'contatti': forms.TextInput(attrs={'class': 'form-control'}),
-            'cartella': forms.TextInput(attrs={'class': 'form-control'}),
+            'partnership':  forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Hinc Coop'}),
+            'url_cartella': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        if instance is not None and instance.pk:
+            self.fields['partnership'].disabled = True
+            self.fields['partnership'].help_text = 'Chiave primaria: non modificabile.'
 
-        for name, field in self.fields.items():
-            if name in {'realta', 'contatti', 'cartella', 'anno'} and hasattr(field.widget, 'attrs'):
-                existing_class = field.widget.attrs.get('class', '').strip()
-                if 'form-control' not in existing_class.split():
-                    field.widget.attrs['class'] = f"{existing_class} form-control".strip()
+    def clean_partnership(self):
+        nome = (self.cleaned_data.get('partnership') or '').strip()
+        if not nome:
+            raise forms.ValidationError('Il nome della Partnership è obbligatorio.')
+        return nome
 
-            if name in {'realta', 'contatti', 'cartella'} and isinstance(field.widget, forms.TextInput):
-                field.widget.attrs['style'] = 'max-width: 360px; width: 100%;'
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.status_partnership = Partnership.STATUS_TRATTATIVA
+        if commit:
+            obj.save()
+        return obj
 
-        self.fields['periodo'].widget = MonthYearWidget()
+
+class NonFinalizzataForm(forms.ModelForm):
+    """Form per Partnership Non Finalizzate (status auto = Non finalizzata)."""
+
+    class Meta:
+        model = Partnership
+        fields = [
+            'partnership', 'contatti', 'data_firma', 'anno',
+            'cartella_sul_drive', 'url_cartella',
+        ]
+        labels = {
+            'partnership': 'Nome Realtà',
+            'contatti': 'Contatti',
+            'data_firma': 'Data primo contatto',
+            'anno': 'Anno',
+            'cartella_sul_drive': 'Cartella Drive (nome)',
+            'url_cartella': 'URL Cartella Drive',
+        }
+        widgets = {
+            'partnership':         forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: ACME srl'}),
+            'contatti':            forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Una email per riga'}),
+            'data_firma':          forms.TextInput(attrs={'class': 'form-control', 'placeholder': DATE_PLACEHOLDER}),
+            'anno':                forms.NumberInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
+            'cartella_sul_drive':  forms.TextInput(attrs={'class': 'form-control'}),
+            'url_cartella':        forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        if instance is not None and instance.pk:
+            self.fields['partnership'].disabled = True
+            self.fields['partnership'].help_text = 'Chiave primaria: non modificabile.'
+
+    def clean_partnership(self):
+        nome = (self.cleaned_data.get('partnership') or '').strip()
+        if not nome:
+            raise forms.ValidationError('Il nome è obbligatorio.')
+        return nome
+
+    def clean_data_firma(self):
+        return _normalize_date_text(self.cleaned_data.get('data_firma'))
 
     def clean_anno(self):
         anno = self.cleaned_data.get('anno')
         if anno in (None, ''):
             return None
-
         try:
-            return int(anno)
+            anno_int = int(anno)
         except (TypeError, ValueError):
-            raise forms.ValidationError('Il campo Anno deve contenere un numero intero valido.')
+            raise forms.ValidationError('Il campo Anno deve essere un numero intero.')
+        if anno_int <= 2010:
+            raise forms.ValidationError('Il campo Anno deve essere maggiore di 2010.')
+        return anno_int
 
-    def clean_periodo(self):
-        periodo = self.cleaned_data.get('periodo')
-        if periodo in (None, ''):
-            return ''
-
-        periodo = str(periodo).strip()
-        if '/' not in periodo:
-            raise forms.ValidationError('Il Periodo deve essere nel formato mm/aaaa.')
-
-        month, year = periodo.split('/', 1)
-        if len(month) != 2 or not month.isdigit() or not 1 <= int(month) <= 12:
-            raise forms.ValidationError('Il Periodo deve essere nel formato mm/aaaa.')
-        if len(year) != 4 or not year.isdigit():
-            raise forms.ValidationError('Il Periodo deve essere nel formato mm/aaaa.')
-
-        return f'{month}/{year}'
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.status_partnership = Partnership.STATUS_NON_FINALIZZATA
+        if commit:
+            obj.save()
+        return obj
 
 
 def _parse_date_ddmmyyyy_to_iso(value):

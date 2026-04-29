@@ -18,12 +18,10 @@ urlpatterns = [
     
     # --- CRUD de Partnerships ---
     path('partnerships/nuova/', views.partnership_create, name='partnership_create'),
+    path('partnerships/nuova/<str:kind>/', views.partnership_create, name='partnership_create_kind'),
     path('partnerships/<str:pk>/modifica/', views.partnership_update, name='partnership_update'),
     path('partnerships/<str:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
-
-    # --- CRUD de Partnerships Finalizzate ---
-    path('partnerships/non-finalizzate/nuova/', views.partnership_nonfin_create, name='partnership_nonfin_create'),
-    path('partnerships/non-finalizzate/<str:pk>/modifica/', views.partnership_nonfin_update, name='partnership_nonfin_update'),
+    path('partnerships/<str:pk>/sposta/', views.partnership_change_status, name='partnership_change_status'),
 
     # Soci (read-only: write avviene via sync Sheets -> Supabase)
     path('soci/', views.soci, name='soci'),

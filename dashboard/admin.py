@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AuditLog, Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
+from .models import AuditLog, Eventi, Formazioni, Progetti, Soci, Socio, Partnership
 
 @admin.register(Eventi)
 class EventiAdmin(admin.ModelAdmin):
@@ -26,11 +26,6 @@ class PartnershipAdmin(admin.ModelAdmin):
     list_display = ('partnership', 'id_codice', 'status_partnership', 'tipologia', 'anno', 'data_firma')
     list_filter = ('status_partnership', 'tipologia', 'anno')
     search_fields = ('partnership', 'id_codice', 'contatti')
-
-@admin.register(PartnershipNonFin)
-class PartnershipNonFinAdmin(admin.ModelAdmin):
-    list_display = ('realta', 'contatti', 'periodo', 'anno', 'cartella')
-
 
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):

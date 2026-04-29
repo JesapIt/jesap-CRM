@@ -59,6 +59,19 @@
     .btn-action.danger { color: #EF4444; background-color: #FEF2F2; border-color: #FCA5A5; }
     .btn-action.danger:hover { background-color: #FEE2E2; color: #DC2626; }
 
+    .move-select {
+      background-color: #EEF2FF;
+      color: #4338CA;
+      border: 1px solid #C7D2FE;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .move-select:hover { background-color: #E0E7FF; }
+
     /* Sorting UI */
     th.partner-sort { cursor: pointer; user-select: none; white-space: nowrap; }
     .partner-sort__inner { display: inline-flex; align-items: center; gap: 8px; }
@@ -160,21 +173,24 @@
     <div style="width: 100%;">
       
       <div class="table-card" style="width: 100%;">
-        {% if current_tab == 'non_finalizzate' and is_editor %}
+        {% if is_editor %}
         <div style="display: flex; justify-content: flex-end; margin-bottom: 16px; padding: 16px 16px 0 16px;">
-          <a href="{% url 'partnership_nonfin_create' %}" class="btn-primary">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-            Nuova Partnership Finalizzata
-          </a>
-        </div>
-        {% endif %}
-        
-        {% if is_editor and current_tab == 'partnership' %}
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px; padding: 16px 16px 0 16px;">
-          <a href="{% url 'partnership_create' %}" class="btn-primary">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-            Nuova Partnership
-          </a>
+          {% if current_tab == 'partnership' %}
+            <a href="{% url 'partnership_create_kind' 'full' %}" class="btn-primary">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+              Nuova Partnership
+            </a>
+          {% elif current_tab == 'lead' %}
+            <a href="{% url 'partnership_create_kind' 'lead' %}" class="btn-primary">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+              Nuovo Lead
+            </a>
+          {% elif current_tab == 'non_finalizzate' %}
+            <a href="{% url 'partnership_create_kind' 'non_finalizzata' %}" class="btn-primary">
+              <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+              Nuova Non Finalizzata
+            </a>
+          {% endif %}
         </div>
         {% endif %}
 
@@ -203,11 +219,11 @@
             </tr>
             {% elif current_tab == 'non_finalizzate' %}
             <tr>
-              <th class="partner-sort is-sorted is-asc" data-sort-key="realta" data-sort-type="text">Realtà</th>
+              <th class="partner-sort is-sorted is-asc" data-sort-key="nome" data-sort-type="text">Realtà</th>
               <th class="partner-sort" data-sort-key="contatti" data-sort-type="text">Contatti</th>
-              <th class="partner-sort" data-sort-key="periodo" data-sort-type="text">Periodo</th>
+              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="text">Periodo</th>
               <th class="partner-sort" data-sort-key="anno" data-sort-type="number">Anno</th>
-              <th>Cartella</th>
+              <th>Cartella Drive</th>
               {% if is_editor %}
                 <th style="text-align: right;">Azioni</th>
               {% endif %}
@@ -242,7 +258,15 @@
                   </td>
                   {% if is_editor %}
                   <td style="text-align: right;">
-                    <div style="display: flex; gap: 8px; justify-content: flex-end;" onclick="event.stopPropagation()">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;" onclick="event.stopPropagation()">
+                      <form method="post" action="{% url 'partnership_change_status' p.partnership %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <select name="status" class="move-select js-move-select">
+                          <option value="">Sposta in...</option>
+                          <option value="In trattativa">Lead Partnership</option>
+                          <option value="Non finalizzata">Non finalizzata</option>
+                        </select>
+                      </form>
                       <a href="{% url 'partnership_update' p.partnership %}" class="btn-action">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         Modifica
@@ -330,7 +354,15 @@
                   </td>
                   {% if is_editor %}
                   <td style="text-align: right;">
-                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                      <form method="post" action="{% url 'partnership_change_status' p.partnership %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <select name="status" class="move-select js-move-select">
+                          <option value="">Sposta in...</option>
+                          <option value="Attiva">Partnership Attiva</option>
+                          <option value="Non finalizzata">Non finalizzata</option>
+                        </select>
+                      </form>
                       <a href="{% url 'partnership_update' p.partnership %}" class="btn-action">Modifica</a>
                       <a href="{% url 'partnership_delete' p.partnership %}" class="btn-action danger">Elimina</a>
                     </div>
@@ -345,20 +377,40 @@
               {% endif %}
 
             {% elif current_tab == 'non_finalizzate' %}
-              {% if dati_tabella %}
-                {% for p in dati_tabella %}
+              {% if non_finalizzate %}
+                {% for p in non_finalizzate %}
                 <tr class="partner-row">
-                  <td data-sort-key="realta">{{ p.realta }}</td>
-                  <td data-sort-key="contatti">{{ p.contatti|default:"N/A" }}</td>
-                  <td data-sort-key="periodo">{{ p.periodo|default:"-" }}</td>
+                  <td data-sort-key="nome"><strong>{{ p.partnership|default:"-" }}</strong></td>
+                  <td data-sort-key="contatti" style="white-space: pre-line;">{{ p.contatti|default:"N/A" }}</td>
+                  <td data-sort-key="data_firma">{{ p.data_firma|default:"-" }}</td>
                   <td data-sort-key="anno">{{ p.anno|default:"-" }}</td>
-                  <td>{{ p.cartella|default:"-" }}</td>
+                  <td>
+                    {% if p.url_cartella %}
+                      <a href="{{ p.url_cartella }}" target="_blank" rel="noopener" style="color: #4F46E5; text-decoration: underline;">📁 Apri</a>
+                    {% elif p.cartella_sul_drive %}
+                      {{ p.cartella_sul_drive }}
+                    {% else %}
+                      <span style="color: #9CA3AF;">-</span>
+                    {% endif %}
+                  </td>
                   {% if is_editor %}
                   <td style="text-align: right;">
-                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                      <a href="{% url 'partnership_nonfin_update' p.realta %}" class="btn-action">
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                      <form method="post" action="{% url 'partnership_change_status' p.partnership %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <select name="status" class="move-select js-move-select">
+                          <option value="">Sposta in...</option>
+                          <option value="In trattativa">Lead Partnership</option>
+                          <option value="Attiva">Partnership Attiva</option>
+                        </select>
+                      </form>
+                      <a href="{% url 'partnership_update' p.partnership %}" class="btn-action">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         Modifica
+                      </a>
+                      <a href="{% url 'partnership_delete' p.partnership %}" class="btn-action danger">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Elimina
                       </a>
                     </div>
                   </td>
@@ -367,7 +419,7 @@
                 {% endfor %}
               {% else %}
                 <tr>
-                  <td colspan="{% if is_editor %}6{% else %}5{% endif %}" style="text-align: center; padding: 40px; color: #64748B;">Nessun dato presente in questa sezione.</td>
+                  <td colspan="{% if is_editor %}6{% else %}5{% endif %}" style="text-align: center; padding: 40px; color: #64748B;">Nessuna partnership non finalizzata.</td>
                 </tr>
               {% endif %}
             {% endif %}
@@ -393,6 +445,22 @@
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
       if (!tbody) return;
+
+      // --- "Sposta in..." dropdown: conferma + auto-submit ---
+      document.querySelectorAll(".js-move-select").forEach((sel) => {
+        sel.addEventListener("click", (e) => e.stopPropagation());
+        sel.addEventListener("change", (e) => {
+          e.stopPropagation();
+          const val = sel.value;
+          if (!val) return;
+          const label = sel.options[sel.selectedIndex].text;
+          if (!confirm(`Spostare questa Partnership in "${label}"?`)) {
+            sel.selectedIndex = 0;
+            return;
+          }
+          sel.form.submit();
+        });
+      });
 
       // --- Expand/collapse riga partnership ---
       tbody.querySelectorAll(".row-toggle").forEach((btn) => {
