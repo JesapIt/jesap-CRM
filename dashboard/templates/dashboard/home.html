@@ -33,6 +33,15 @@
     .welcome-card p { color: var(--ink); font-size: 15px; line-height: 1.7; margin: 0 0 14px; }
     .welcome-card p:last-child { margin-bottom: 0; }
     .welcome-card .tip { background: #F5F3FF; border-left: 4px solid var(--brand); padding: 14px 18px; border-radius: 0 8px 8px 0; margin-top: 20px; font-size: 14px; color: #4C1D95; }
+
+    /* Override brand-gradient sul titolo hero della home → bianco pieno. */
+    .hero--home .hero__title {
+        background: none !important;
+        -webkit-background-clip: initial !important;
+                background-clip: initial !important;
+        -webkit-text-fill-color: #ffffff !important;
+        color: #ffffff !important;
+    }
 </style>
 {% endblock %}
 
