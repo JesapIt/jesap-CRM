@@ -8,14 +8,20 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from urllib.parse import urlencode
 from .models import Partnership
-from .forms import PartnershipForm, PartnershipNonFinForm, ProgettoForm
+from .forms import (
+    PartnershipForm,
+    PartnershipFullForm,
+    LeadPartnershipForm,
+    NonFinalizzataForm,
+    ProgettoForm,
+)
 from . import choices as ch
 
 # These are for generating secure email links
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.core import signing
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, PartnershipNonFin
+from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
 from django.conf import settings# Adicione este import lá no topo junto com os outros
 from django.contrib.auth.decorators import user_passes_test
 
@@ -172,12 +178,12 @@ def partnerships(request):
     }
     
     if tab == "partnership":
-        queryset = Partnership.objects.exclude(
-            status_partnership__iexact='In trattativa'
+        queryset = Partnership.objects.filter(
+            status_partnership__in=Partnership.STATUS_PARTNERSHIP_TAB
         ).order_by('partnership')
 
-        # Dropdown filtro: valori ufficiali della planilha (esclude Lead).
-        context["stati_partnership"] = ch.PARTNERSHIP_STATUS_OFFICIAL_VALUES
+        stati_partnership = list(Partnership.STATUS_PARTNERSHIP_TAB)
+        context["stati_partnership"] = stati_partnership
 
         if search_query:
             queryset = queryset.filter(
@@ -196,22 +202,25 @@ def partnerships(request):
         context["page_obj"] = page_obj
 
     elif tab == "non_finalizzate":
-        queryset = PartnershipNonFin.objects.all().order_by('realta')
+        queryset = Partnership.objects.filter(
+            status_partnership__iexact=Partnership.STATUS_NON_FINALIZZATA
+        ).order_by('partnership')
 
         if search_query:
             queryset = queryset.filter(
-                Q(realta__icontains=search_query) |
+                Q(partnership__icontains=search_query) |
                 Q(contatti__icontains=search_query)
             )
 
         paginator = Paginator(queryset, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
+        context["non_finalizzate"] = page_obj
         context["dati_tabella"] = page_obj
         context["page_obj"] = page_obj
 
     elif tab == "lead":
         queryset = Partnership.objects.filter(
-            status_partnership__iexact='In trattativa'
+            status_partnership__iexact=Partnership.STATUS_TRATTATIVA
         ).order_by('partnership')
 
         if search_query:
@@ -235,7 +244,7 @@ def progetti(request):
 
     queryset = Progetti.objects.all().order_by('nome_progetto')
 
-    # Dropdown filtro: valori ufficiali della planilha.
+    # Sorgente di verità: choices.py (allineato al foglio ufficiale).
     stati = ch.STATO_PROGETTO_VALUES
 
     if search_query:
@@ -416,75 +425,116 @@ def admin_demote(request):
             messages.error(request, "Utente non trovato.")
     return redirect(reverse("soci") + "?tab=admin")
 
+_KIND_TO_FORM = {
+    Partnership.KIND_FULL:    PartnershipFullForm,
+    Partnership.KIND_LEAD:    LeadPartnershipForm,
+    Partnership.KIND_NON_FIN: NonFinalizzataForm,
+}
+
+
+def _redirect_to_tab(kind):
+    tab = Partnership.KIND_TO_TAB.get(kind, 'partnership')
+    return redirect(reverse('partnerships') + f'?tab={tab}')
+
+
 @user_passes_test(is_editor)
-def partnership_create(request):
+def partnership_create(request, kind=Partnership.KIND_FULL):
+    if kind not in _KIND_TO_FORM:
+        kind = Partnership.KIND_FULL
+    FormClass = _KIND_TO_FORM[kind]
+
     if request.method == 'POST':
-        form = PartnershipForm(request.POST)
+        form = FormClass(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, "Partnership criada com sucesso!")
-            return redirect('partnerships') # Redireciona para a aba principal
+            messages.success(request, "Partnership creata con successo!")
+            # Per le full la tab dipende dallo status scelto
+            if kind == Partnership.KIND_FULL:
+                status = form.cleaned_data.get('status_partnership') or ''
+                if status == Partnership.STATUS_TRATTATIVA:
+                    return redirect(reverse('partnerships') + '?tab=lead')
+                if status == Partnership.STATUS_NON_FINALIZZATA:
+                    return redirect(reverse('partnerships') + '?tab=non_finalizzate')
+                return redirect('partnerships')
+            return _redirect_to_tab(kind)
     else:
-        form = PartnershipForm()
-    
-    context = {'form': form, 'azione': 'Nuova'}
+        form = FormClass()
+
+    azione_map = {
+        Partnership.KIND_FULL:    'Nuova Partnership',
+        Partnership.KIND_LEAD:    'Nuovo Lead',
+        Partnership.KIND_NON_FIN: 'Nuova Non Finalizzata',
+    }
+    context = {
+        'form': form,
+        'azione': azione_map[kind],
+        'kind': kind,
+    }
     return render(request, 'dashboard/partnership_form.html', context)
+
 
 @user_passes_test(is_editor)
 def partnership_update(request, pk):
     partnership = get_object_or_404(Partnership, partnership=pk)
-    
+
+    # Scegli il form in base allo status corrente
+    status = (partnership.status_partnership or '').strip()
+    if status == Partnership.STATUS_TRATTATIVA:
+        FormClass = LeadPartnershipForm
+        kind = Partnership.KIND_LEAD
+    elif status == Partnership.STATUS_NON_FINALIZZATA:
+        FormClass = NonFinalizzataForm
+        kind = Partnership.KIND_NON_FIN
+    else:
+        FormClass = PartnershipFullForm
+        kind = Partnership.KIND_FULL
+
     if request.method == 'POST':
-        form = PartnershipForm(request.POST, instance=partnership)
+        form = FormClass(request.POST, instance=partnership)
         if form.is_valid():
             form.save()
-            messages.success(request, "Partnership atualizada com sucesso!")
-            return redirect('partnerships') # Redireciona para a aba principal
+            messages.success(request, "Partnership aggiornata con successo!")
+            return _redirect_to_tab(kind)
     else:
-        form = PartnershipForm(instance=partnership)
-    
-    context = {'form': form, 'azione': 'Modifica'}
+        form = FormClass(instance=partnership)
+
+    context = {'form': form, 'azione': 'Modifica', 'kind': kind}
     return render(request, 'dashboard/partnership_form.html', context)
+
 
 @user_passes_test(is_editor)
 def partnership_delete(request, pk):
     partnership = get_object_or_404(Partnership, partnership=pk)
-    
+
     if request.method == 'POST':
         partnership.delete()
-        messages.success(request, "Partnership eliminada com sucesso!")
-        return redirect('partnerships') # Redireciona para a aba principal
-        
+        messages.success(request, "Partnership eliminata con successo!")
+        return redirect('partnerships')
+
     return render(request, 'dashboard/partnership_confirm_delete.html', {'partnership': partnership})
 
 
 @user_passes_test(is_editor)
-def partnership_nonfin_create(request):
-    if request.method == 'POST':
-        form = PartnershipNonFinForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Partnership finalizzata criada com sucesso!")
-            return redirect(reverse("partnerships") + "?tab=non_finalizzate")
-    else:
-        form = PartnershipNonFinForm()
+def partnership_change_status(request, pk):
+    """POST-only: sposta una Partnership in un altro tab cambiando lo status."""
+    if request.method != 'POST':
+        return redirect('partnerships')
 
-    context = {'form': form, 'azione': 'Nuova'}
-    return render(request, 'dashboard/partnership_nonfin_form.html', context)
+    partnership = get_object_or_404(Partnership, partnership=pk)
+    new_status = (request.POST.get('status') or '').strip()
 
+    valid_statuses = dict(Partnership.STATUS_CHOICES)
+    if new_status not in valid_statuses:
+        messages.error(request, "Status non valido.")
+        return redirect('partnerships')
 
-@user_passes_test(is_editor)
-def partnership_nonfin_update(request, pk):
-    partnership_nonfin = get_object_or_404(PartnershipNonFin, realta=pk)
+    partnership.status_partnership = new_status
+    partnership.save(update_fields=['status_partnership'])
+    messages.success(request, f"Spostata in '{new_status}'.")
 
-    if request.method == 'POST':
-        form = PartnershipNonFinForm(request.POST, instance=partnership_nonfin)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Partnership finalizzata atualizada com sucesso!")
-            return redirect(reverse("partnerships") + "?tab=non_finalizzate")
-    else:
-        form = PartnershipNonFinForm(instance=partnership_nonfin)
-
-    context = {'form': form, 'azione': 'Modifica'}
-    return render(request, 'dashboard/partnership_nonfin_form.html', context)
+    # Redirect al tab di destinazione
+    if new_status == Partnership.STATUS_TRATTATIVA:
+        return redirect(reverse('partnerships') + '?tab=lead')
+    if new_status == Partnership.STATUS_NON_FINALIZZATA:
+        return redirect(reverse('partnerships') + '?tab=non_finalizzate')
+    return redirect(reverse('partnerships') + '?tab=partnership')
