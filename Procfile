@@ -1,2 +1,2 @@
-web: gunicorn setup.wsgi --log-file - --workers 2 --timeout 60
+web: gunicorn setup.wsgi --bind 0.0.0.0:$PORT --log-file - --workers 2 --timeout 120
 release: python manage.py migrate --noinput
