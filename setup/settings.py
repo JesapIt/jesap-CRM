@@ -93,6 +93,14 @@ if DATABASE_URL and "://" in DATABASE_URL:
 if FORCE_POSTGRES and not DATABASE_URL:
     raise ImproperlyConfigured("USE_POSTGRES / FORCE_POSTGRES is set but DATABASE_URL is missing.")
 
+# Guard di produzione: in prod (DEBUG=False) NON è permesso il fallback silenzioso
+# a SQLite. È quasi sempre un errore di configurazione (DATABASE_URL non arriva).
+if not DEBUG and (FORCE_SQLITE or not DATABASE_URL):
+    raise ImproperlyConfigured(
+        "Produzione: DATABASE_URL deve essere settata e USE_SQLITE deve essere off. "
+        "Configura DATABASE_URL nelle env vars del provider (Railway/Heroku/...)."
+    )
+
 if FORCE_SQLITE or not DATABASE_URL:
     DATABASES = {
         "default": {
