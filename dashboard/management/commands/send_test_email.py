@@ -18,7 +18,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Invio email di prova a {to} …")
 
         send_mail(
-            subject='Test SMTP — JESAP ERP',
+            subject='Test SMTP — JESAP Gestionale',
             message='Se leggi questo messaggio, la configurazione SMTP è corretta.',
             from_email=None,   # usa DEFAULT_FROM_EMAIL
             recipient_list=[to],

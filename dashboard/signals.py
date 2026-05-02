@@ -26,7 +26,7 @@ def send_welcome_email(sender, instance, created, **kwargs):
     html_body = render_to_string('registration/welcome_email.html', context)
 
     msg = EmailMultiAlternatives(
-        subject='Benvenuto su JESAP ERP!',
+        subject='Benvenuto sul Gestionale di JESAP!',
         body=text_body,
         from_email=None,  # uses DEFAULT_FROM_EMAIL
         to=[instance.email],

@@ -77,7 +77,7 @@ def register_step1(request):
                 html_body = render_to_string('registration/registration_verify_email.html', ctx)
 
                 msg = EmailMultiAlternatives(
-                    subject="Completa la tua registrazione all'ERP JESAP",
+                    subject="Completa la tua registrazione al Gestionale JESAP",
                     body=text_body,
                     from_email=None,
                     to=[email],
@@ -356,9 +356,13 @@ def soci(request):
             )
         context["admin_users"] = admin_users.order_by("username")
 
-        if request.user.is_superuser:
+        # Admin (is_staff o superuser) può promuovere/rimuovere altri admin.
+        if request.user.is_staff or request.user.is_superuser:
             all_non_admin = User.objects.filter(is_staff=False, is_superuser=False).order_by("username")
             context["non_admin_users"] = all_non_admin
+            context["can_manage_admins"] = True
+        else:
+            context["can_manage_admins"] = False
 
         context["soci_list"] = []
     else:
@@ -392,8 +396,12 @@ def soci(request):
     return render(request, "dashboard/soci.html", context)
 
 
+def _is_admin_user(u):
+    return u.is_authenticated and (u.is_staff or u.is_superuser)
+
+
 @login_required(login_url="login")
-@user_passes_test(lambda u: u.is_superuser)
+@user_passes_test(_is_admin_user)
 def admin_promote(request):
     if request.method == "POST":
         user_id = request.POST.get("user_id")
@@ -408,7 +416,7 @@ def admin_promote(request):
 
 
 @login_required(login_url="login")
-@user_passes_test(lambda u: u.is_superuser)
+@user_passes_test(_is_admin_user)
 def admin_demote(request):
     if request.method == "POST":
         user_id = request.POST.get("user_id")
@@ -416,10 +424,16 @@ def admin_demote(request):
             target = User.objects.get(pk=user_id)
             if target == request.user:
                 messages.error(request, "Non puoi rimuovere te stesso.")
+            elif target.is_superuser and not request.user.is_superuser:
+                # Solo un superuser può rimuovere un altro superuser.
+                messages.error(request, "Non puoi rimuovere un superuser.")
             else:
                 target.is_staff = False
-                target.is_superuser = False
-                target.save(update_fields=["is_staff", "is_superuser"])
+                if request.user.is_superuser:
+                    target.is_superuser = False
+                    target.save(update_fields=["is_staff", "is_superuser"])
+                else:
+                    target.save(update_fields=["is_staff"])
                 messages.success(request, f"{target.username} rimosso dagli admin.")
         except User.DoesNotExist:
             messages.error(request, "Utente non trovato.")

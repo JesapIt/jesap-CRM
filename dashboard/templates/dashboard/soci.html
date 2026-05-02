@@ -1,6 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 
-{% block title %}JESAP ERP - Soci{% endblock %}
+{% block title %}JESAP Gestionale - Soci{% endblock %}
 
 {% block content %}
   <style>
@@ -116,7 +116,7 @@
             <tr>
               <th>Nome e Cognome</th>
               <th>Email @jesap</th>
-              {% if request.user.is_superuser %}
+              {% if can_manage_admins %}
                 <th style="text-align:right;">Azioni</th>
               {% endif %}
             </tr>
@@ -126,16 +126,18 @@
             <tr class="soci-row">
               <td>{{ u.get_full_name|default:u.username }}</td>
               <td>{{ u.email|default:"-" }}</td>
-              {% if request.user.is_superuser %}
+              {% if can_manage_admins %}
               <td style="text-align:right;">
-                {% if u != request.user %}
+                {% if u == request.user %}
+                  <span style="color:#94a3b8;font-size:13px;">Tu</span>
+                {% elif u.is_superuser and not request.user.is_superuser %}
+                  <span style="color:#94a3b8;font-size:13px;">Superuser</span>
+                {% else %}
                 <form method="post" action="{% url 'admin_demote' %}" style="display:inline;" onsubmit="return confirm('Rimuovere {{ u.username }} dagli admin?');">
                   {% csrf_token %}
                   <input type="hidden" name="user_id" value="{{ u.pk }}">
                   <button type="submit" class="btn-action danger">Rimuovi da admin</button>
                 </form>
-                {% else %}
-                  <span style="color:#94a3b8;font-size:13px;">Tu</span>
                 {% endif %}
               </td>
               {% endif %}
@@ -147,8 +149,8 @@
         </table>
       </div>
 
-      {# --- Promozione admin (solo superuser) --- #}
-      {% if request.user.is_superuser %}
+      {# --- Promozione admin (admin o superuser) --- #}
+      {% if can_manage_admins %}
       <div class="admin-add-section">
         <h3>Aggiungi admin</h3>
         <form method="post" action="{% url 'admin_promote' %}" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -169,65 +171,114 @@
     {# ============================================================ #}
     {% else %}
 
+      <style>
+        /* Riga espandibile soci */
+        .soci-row { transition: background-color 0.2s ease; cursor: pointer; }
+        .soci-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+        .soci-row-toggle {
+          width: 32px; height: 32px; padding: 0; border: none; background: transparent;
+          cursor: pointer; color: #475569; border-radius: 6px;
+          display: inline-flex; align-items: center; justify-content: center;
+          transition: background 0.15s, transform 0.2s;
+        }
+        .soci-row-toggle:hover { background: rgba(99, 102, 241, 0.12); color: #4338CA; }
+        .soci-row-toggle.is-open { transform: rotate(90deg); color: #4338CA; }
+        .soci-detail { display: none; background: #F8FAFC; }
+        .soci-detail.is-open { display: table-row; }
+        .soci-detail__inner { padding: 18px 24px; border-top: 1px solid #E2E8F0; }
+        .soci-detail-grid {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 14px 28px;
+        }
+        .soci-detail-item { font-size: 13px; line-height: 1.4; }
+        .soci-detail-item__label {
+          display: block; font-weight: 700; color: #64748B;
+          text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; margin-bottom: 4px;
+        }
+        .soci-detail-item__value { color: #1E293B; word-break: break-word; }
+        .soci-detail-item__value.muted { color: #94A3B8; }
+      </style>
+
       <div class="table-card" style="overflow-x:auto;">
         <table class="table" id="soci-table">
           <thead>
             <tr>
-              {# --- Admin-only columns --- #}
-              {% if request.user.is_staff or request.user.is_superuser %}
-                <th>ID</th>
-              {% endif %}
-
-              {# --- Standard columns --- #}
+              <th style="width: 40px;"></th>
               <th>Nome e Cognome</th>
               <th>Ruolo</th>
               <th>Area</th>
-              <th>Data Entrata</th>
-              <th>Facolt&agrave;</th>
-              <th>Corso di Studi</th>
-              <th>Note</th>
-
-              {# --- Admin-only sensitive columns --- #}
-              {% if request.user.is_staff or request.user.is_superuser %}
-                <th>Data di Nascita</th>
-                <th>Email @jesap</th>
-                <th>Email Personale</th>
-                <th>Cellulare</th>
-                <th>Data Inizio Prova</th>
-                <th>Anno di Studi</th>
-              {% endif %}
-
             </tr>
           </thead>
           <tbody id="table-body">
             {% for s in soci_list %}
               {% if s.nome_e_cognome and s.nome_e_cognome != 'None' %}
-              <tr class="soci-row">
-                {% if request.user.is_staff or request.user.is_superuser %}
-                  <td>{{ s.id }}</td>
-                {% endif %}
-
+              <tr class="soci-row" data-row-id="soci-row-{{ forloop.counter }}">
+                <td>
+                  <button type="button" class="soci-row-toggle" data-toggle-target="soci-row-{{ forloop.counter }}" aria-expanded="false" aria-label="Espandi dettagli">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>
+                  </button>
+                </td>
                 <td data-sort-key="nome"><strong>{{ s.nome_e_cognome }}</strong></td>
                 <td data-sort-key="ruolo">{{ s.ruolo|default:"-" }}</td>
                 <td data-sort-key="area">{{ s.area_di_appartenenza|default:"-" }}</td>
-                <td>{{ s.data_entrata|default:"-" }}</td>
-                <td>{{ s.facolta_field|default:"-" }}</td>
-                <td>{{ s.corso_di_studi|default:"-" }}</td>
-                <td>{{ s.note|default:"-" }}</td>
-
-                {% if request.user.is_staff or request.user.is_superuser %}
-                  <td>{{ s.data_di_nascita|default:"-" }}</td>
-                  <td>{{ s.email_jesap|default:"-" }}</td>
-                  <td>{{ s.email_personale|default:"-" }}</td>
-                  <td>{{ s.cellulare|default:"-" }}</td>
-                  <td>{{ s.data_inizio_prova|default:"-" }}</td>
-                  <td>{{ s.anno_di_studi|default:"-" }}</td>
-                {% endif %}
-
+              </tr>
+              <tr class="soci-detail" id="soci-row-{{ forloop.counter }}">
+                <td colspan="4" class="soci-detail__inner">
+                  <div class="soci-detail-grid">
+                    {% if request.user.is_staff or request.user.is_superuser %}
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">ID</span>
+                      <span class="soci-detail-item__value">{{ s.id }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Data Entrata</span>
+                      <span class="soci-detail-item__value{% if not s.data_entrata %} muted{% endif %}">{{ s.data_entrata|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Facoltà</span>
+                      <span class="soci-detail-item__value{% if not s.facolta_field %} muted{% endif %}">{{ s.facolta_field|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Corso di Studi</span>
+                      <span class="soci-detail-item__value{% if not s.corso_di_studi %} muted{% endif %}">{{ s.corso_di_studi|default:"—" }}</span>
+                    </div>
+                    {% if request.user.is_staff or request.user.is_superuser %}
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Anno di Studi</span>
+                      <span class="soci-detail-item__value{% if not s.anno_di_studi %} muted{% endif %}">{{ s.anno_di_studi|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Data di Nascita</span>
+                      <span class="soci-detail-item__value{% if not s.data_di_nascita %} muted{% endif %}">{{ s.data_di_nascita|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Email @jesap</span>
+                      <span class="soci-detail-item__value{% if not s.email_jesap %} muted{% endif %}">{{ s.email_jesap|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Email Personale</span>
+                      <span class="soci-detail-item__value{% if not s.email_personale %} muted{% endif %}">{{ s.email_personale|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Cellulare</span>
+                      <span class="soci-detail-item__value{% if not s.cellulare %} muted{% endif %}">{{ s.cellulare|default:"—" }}</span>
+                    </div>
+                    <div class="soci-detail-item">
+                      <span class="soci-detail-item__label">Data Inizio Prova</span>
+                      <span class="soci-detail-item__value{% if not s.data_inizio_prova %} muted{% endif %}">{{ s.data_inizio_prova|default:"—" }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="soci-detail-item" style="grid-column: 1 / -1;">
+                      <span class="soci-detail-item__label">Note</span>
+                      <span class="soci-detail-item__value{% if not s.note %} muted{% endif %}">{{ s.note|default:"—" }}</span>
+                    </div>
+                  </div>
+                </td>
               </tr>
               {% endif %}
             {% empty %}
-              <tr><td colspan="{% if request.user.is_staff %}15{% else %}8{% endif %}" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
+              <tr><td colspan="4" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -255,22 +306,51 @@
       var tbody = document.getElementById("table-body");
       if (!tbody) return;
 
+      // --- Espandi/comprimi riga socio ---
+      tbody.querySelectorAll(".soci-row-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var targetId = btn.dataset.toggleTarget;
+          var detail = document.getElementById(targetId);
+          if (!detail) return;
+          var isOpen = detail.classList.toggle("is-open");
+          btn.classList.toggle("is-open", isOpen);
+          btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        });
+      });
+      // Click sulla riga apre/chiude
+      tbody.querySelectorAll(".soci-row").forEach(function (row) {
+        row.addEventListener("click", function () {
+          var btn = row.querySelector(".soci-row-toggle");
+          if (btn) btn.click();
+        });
+      });
+
       var topSelect = document.getElementById("top-sort-select");
       var topDirBtn = document.getElementById("top-sort-dir");
       var currentDir = "asc";
 
       function doSort(key, dir) {
         topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
-        var rows = Array.from(tbody.querySelectorAll(".soci-row"));
-        rows.sort(function (a, b) {
-          var cellA = a.querySelector('[data-sort-key="' + key + '"]');
-          var cellB = b.querySelector('[data-sort-key="' + key + '"]');
+        // Mantieni accoppiamento riga principale + riga dettaglio.
+        var mainRows = Array.from(tbody.querySelectorAll(".soci-row"));
+        var pairs = mainRows.map(function (row) {
+          var detailId = row.dataset.rowId;
+          var detail = detailId ? tbody.querySelector("#" + detailId) : null;
+          return { row: row, detail: detail };
+        });
+        pairs.sort(function (a, b) {
+          var cellA = a.row.querySelector('[data-sort-key="' + key + '"]');
+          var cellB = b.row.querySelector('[data-sort-key="' + key + '"]');
           var vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
           var vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
           return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
         });
         var frag = document.createDocumentFragment();
-        rows.forEach(function (r) { frag.appendChild(r); });
+        pairs.forEach(function (p) {
+          frag.appendChild(p.row);
+          if (p.detail) frag.appendChild(p.detail);
+        });
         tbody.appendChild(frag);
       }
 
