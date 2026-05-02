@@ -11,7 +11,19 @@ class FormazioniAdmin(admin.ModelAdmin):
 
 @admin.register(Progetti)
 class ProgettiAdmin(admin.ModelAdmin):
-    list_display = ('codice_progetto', 'nome_progetto', 'cliente', 'stato', 'pm')
+    list_display = ('codice_progetto', 'nome_progetto', 'cliente', 'stato', 'pm', 'url_drive')
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if obj is None and 'codice_progetto' in fields:
+            fields.remove('codice_progetto')
+        return fields
+
+    def get_readonly_fields(self, request, obj=None):
+        ro = list(super().get_readonly_fields(request, obj))
+        if obj is not None and 'codice_progetto' not in ro:
+            ro.append('codice_progetto')
+        return ro
 
 @admin.register(Soci)
 class SociAdmin(admin.ModelAdmin):

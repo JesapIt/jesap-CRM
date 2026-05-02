@@ -99,6 +99,7 @@ class Progetti(models.Model):
     coinvolgimento_della_pubblica_amministrazione = models.BooleanField(db_column='COINVOLGIMENTO DELLA Pubblica Amministrazione', blank=True, null=True)
     soddisfazione_team_in_field = models.TextField(db_column='SODDISFAZIONE TEAM (in %%)', blank=True, null=True)
     soddisfazione_cliente_in_field = models.TextField(db_column='SODDISFAZIONE CLIENTE (in %%)', blank=True, null=True)
+    url_drive = models.URLField(db_column='URL Drive', max_length=500, blank=True, null=True, verbose_name='URL Drive')
     risorsa_1 = models.TextField(db_column='RISORSA 1', blank=True, null=True)
     risorsa_2 = models.TextField(db_column='RISORSA 2', blank=True, null=True)
     risorsa_3 = models.TextField(db_column='RISORSA 3', blank=True, null=True)
@@ -123,6 +124,15 @@ class Progetti(models.Model):
     class Meta:
         managed = False
         db_table = 'PROGETTI'
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not (self.codice_progetto or '').strip() \
+                and self.nome_progetto and self.data_inizio:
+            from dashboard.utils.codice_generator import generate_codice_progetto
+            self.codice_progetto = generate_codice_progetto(
+                self.nome_progetto, self.data_inizio,
+            )
+        super().save(*args, **kwargs)
 
 
 class Soci(models.Model):

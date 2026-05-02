@@ -52,8 +52,7 @@ def _select_options(markup, name):
 
 def _progetto_post_data(**overrides):
     data = {
-        'codice_progetto': 'PROG-INT-001',
-        'nome_progetto': 'Test Project',
+        'nome_progetto': 'Test ABC',
         'cliente': 'ACME',
         'tipologia_cliente': 'Startup',
         'tipologia_di_progetto': 'Progetto Interno',
@@ -63,7 +62,7 @@ def _progetto_post_data(**overrides):
         'provenienza': 'Interno',
         'data_primo_contatto': '',
         'data_firma_contratto': '',
-        'data_inizio': '',
+        'data_inizio': '2024-02-01',
         'mese_inizio': '',
         'data_fine_contratto': '',
         'anno': '',
@@ -186,7 +185,8 @@ def test_post_progetto_create_valid_redirects_and_persists(auth_client):
     from dashboard.models import Progetti
     r = auth_client.post(reverse('progetto_create'), _progetto_post_data())
     assert r.status_code == 302
-    assert Progetti.objects.filter(codice_progetto='PROG-INT-001').exists()
+    # CODICE generato automaticamente: "Test ABC" + 01/02/2024 -> TE0224
+    assert Progetti.objects.filter(codice_progetto='TE0224').exists()
 
 
 @pytest.mark.django_db

@@ -166,6 +166,10 @@
                         <div><strong>Profitti:</strong> <span class="js-money" data-money="{{ progetto.profitti }}">{{ progetto.profitti }}</span></div>
                       {% endif %}
 
+                      {% if progetto.url_drive and progetto.url_drive != 'None' %}
+                        <div><strong>URL Drive:</strong> <a href="{{ progetto.url_drive }}" target="_blank" rel="noopener">Apri Drive</a></div>
+                      {% endif %}
+
                       {% with r1=progetto.risorsa_1 r2=progetto.risorsa_2 r3=progetto.risorsa_3 %}
                         {% if r1 and r1 != 'None' %}
                         <div><strong>Risorse:</strong> {{ r1 }}{% if r2 %}, {{ r2 }}{% endif %}{% if r3 %}, {{ r3 }}{% endif %}</div>

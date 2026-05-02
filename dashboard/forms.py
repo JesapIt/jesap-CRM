@@ -547,6 +547,13 @@ class ProgettoForm(forms.ModelForm):
         widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 100, 'inputmode': 'numeric'}),
     )
 
+    url_drive = forms.URLField(
+        required=False,
+        label='URL Drive',
+        max_length=500,
+        widget=forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
+    )
+
     class Meta:
         model = Progetti
         fields = [
@@ -574,6 +581,7 @@ class ProgettoForm(forms.ModelForm):
             'coinvolgimento_della_pubblica_amministrazione',
             'soddisfazione_team_in_field',
             'soddisfazione_cliente_in_field',
+            'url_drive',
             'risorsa_1', 'risorsa_2', 'risorsa_3', 'risorsa_4', 'risorsa_5',
             'risorsa_6', 'risorsa_7', 'risorsa_8', 'risorsa_9', 'risorsa_10',
             'risorsa_11', 'risorsa_12', 'risorsa_13', 'risorsa_14', 'risorsa_15',
@@ -593,6 +601,7 @@ class ProgettoForm(forms.ModelForm):
             'data_inizio': 'Data inizio',
             'data_fine_contratto': 'Data fine contratto',
             'descrizione_servizio_offerto': 'Descrizione servizio offerto',
+            'url_drive': 'URL Drive',
         }
         widgets = {
             'codice_progetto': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: PROG-001'}),
@@ -621,6 +630,29 @@ class ProgettoForm(forms.ModelForm):
                 self.fields[name].required = False
 
         instance = kwargs.get('instance')
+        is_creation = instance is None or instance._state.adding or not (instance.pk or '').strip()
+
+        if is_creation:
+            self.fields.pop('codice_progetto', None)
+            if 'nome_progetto' in self.fields:
+                self.fields['nome_progetto'].required = True
+                self.fields['nome_progetto'].error_messages['required'] = (
+                    'Il NOME PROGETTO è obbligatorio per generare il CODICE.'
+                )
+            if 'data_inizio' in self.fields:
+                self.fields['data_inizio'].required = True
+                self.fields['data_inizio'].error_messages['required'] = (
+                    'La DATA INIZIO è obbligatoria per generare il CODICE.'
+                )
+        else:
+            if 'codice_progetto' in self.fields:
+                self.fields['codice_progetto'].required = False
+                self.fields['codice_progetto'].widget = forms.TextInput(attrs={
+                    'class': 'form-control',
+                    'readonly': 'readonly',
+                    'style': 'background-color: #f3f4f6; cursor: not-allowed;',
+                })
+
         if instance is not None:
             for name in self.DATE_FIELDS:
                 raw = getattr(instance, name, None)
@@ -661,10 +693,11 @@ class ProgettoForm(forms.ModelForm):
             )
 
     def clean_codice_progetto(self):
-        value = (self.cleaned_data.get('codice_progetto') or '').strip()
-        if not value:
-            raise forms.ValidationError('Il codice progetto è obbligatorio.')
-        return value
+        # In edizione il campo è readonly: forza sempre il valore originale
+        # per impedire manipolazioni client-side della PK.
+        if self.instance and self.instance.pk:
+            return self.instance.codice_progetto
+        return (self.cleaned_data.get('codice_progetto') or '').strip()
 
     def _clean_date(self, name):
         value = self.cleaned_data.get(name)
