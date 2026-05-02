@@ -85,12 +85,14 @@
         <div class="form-grid">
           {% for name in 'codice_progetto nome_progetto cliente tipologia_cliente tipologia_di_progetto area_di_pertinenza pm provenienza'|split:' ' %}
             {% with field=form|get_field:name %}
-              <div class="form-group">
-                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-              </div>
+              {% if field %}
+                <div class="form-group">
+                  <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+                  {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+                </div>
+              {% endif %}
             {% endwith %}
           {% endfor %}
         </div>
@@ -131,7 +133,7 @@
       <div class="form-section">
         <h2 class="form-section__title">Performance e dettagli</h2>
         <div class="form-grid">
-          {% for name in 'coinvolgimento_della_pubblica_amministrazione soddisfazione_team_in_field soddisfazione_cliente_in_field'|split:' ' %}
+          {% for name in 'coinvolgimento_della_pubblica_amministrazione soddisfazione_team_in_field soddisfazione_cliente_in_field url_drive'|split:' ' %}
             {% with field=form|get_field:name %}
               <div class="form-group">
                 <label for="{{ field.id_for_label }}">{{ field.label }}</label>

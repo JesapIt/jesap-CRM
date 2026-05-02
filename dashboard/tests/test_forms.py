@@ -33,7 +33,7 @@ PROGETTO_REQUIRED_BASE = {
     'soddisfazione_cliente_in_field': '',
     'data_primo_contatto': '',
     'data_firma_contratto': '',
-    'data_inizio': '',
+    'data_inizio': '2023-09-27',
     'data_fine_contratto': '',
 }
 
@@ -242,3 +242,75 @@ def test_partnership_init_normalizes_in_trattativa_lead():
     instance = Partnership(partnership='X', status_partnership='in trattativa')
     form = PartnershipForm(instance=instance)
     assert form.initial['status_partnership'] == 'In trattativa'
+
+
+def test_progetto_accepts_valid_url_drive():
+    form = ProgettoForm(_progetto_data(url_drive='https://drive.google.com/drive/folders/abc123'))
+    assert 'url_drive' not in form.errors
+    assert form.is_valid(), form.errors
+
+
+def test_progetto_rejects_invalid_url_drive():
+    form = ProgettoForm(_progetto_data(url_drive='not-a-url'))
+    assert 'url_drive' in form.errors
+
+
+def test_progetto_url_drive_optional():
+    form = ProgettoForm(_progetto_data(url_drive=''))
+    assert 'url_drive' not in form.errors
+
+
+# ============================================================
+# CODICE PROGETTO: hidden in creation, readonly in edit
+# ============================================================
+
+def test_form_creation_hides_codice_field():
+    form = ProgettoForm()
+    assert 'codice_progetto' not in form.fields
+
+
+def test_form_edit_shows_codice_readonly():
+    instance = Progetti.objects.create(
+        codice_progetto='CE0923', nome_progetto='Cesop', data_inizio='27/09/2023',
+    )
+    form = ProgettoForm(instance=instance)
+    assert 'codice_progetto' in form.fields
+    attrs = form.fields['codice_progetto'].widget.attrs
+    assert attrs.get('readonly') == 'readonly'
+
+
+def test_form_creation_requires_nome_and_data_inizio():
+    form = ProgettoForm()
+    assert form.fields['nome_progetto'].required is True
+    assert form.fields['data_inizio'].required is True
+
+
+def test_form_creation_fails_without_nome():
+    form = ProgettoForm(_progetto_data(nome_progetto=''))
+    assert not form.is_valid()
+    assert 'nome_progetto' in form.errors
+
+
+def test_form_creation_fails_without_data_inizio():
+    form = ProgettoForm(_progetto_data(data_inizio=''))
+    assert not form.is_valid()
+    assert 'data_inizio' in form.errors
+
+
+def test_form_creation_succeeds_and_generates_codice():
+    form = ProgettoForm(_progetto_data(nome_progetto='Cesop 2', data_inizio='2023-09-27'))
+    assert form.is_valid(), form.errors.as_json()
+    inst = form.save()
+    assert inst.codice_progetto == 'CE0923'
+
+
+def test_form_edit_ignores_client_side_codice_change():
+    instance = Progetti.objects.create(
+        codice_progetto='CE0923', nome_progetto='Cesop', data_inizio='27/09/2023',
+    )
+    form = ProgettoForm(
+        _progetto_data(codice_progetto='HACKED', nome_progetto='Cesop', data_inizio='2023-09-27'),
+        instance=instance,
+    )
+    assert form.is_valid(), form.errors.as_json()
+    assert form.cleaned_data['codice_progetto'] == 'CE0923'
