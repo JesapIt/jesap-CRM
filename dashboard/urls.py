@@ -5,6 +5,9 @@ from .forms import CaseInsensitivePasswordResetForm
 from . import views
 
 urlpatterns = [
+    # Healthcheck (Railway)
+    path('healthz', views.healthz, name='healthz'),
+
     # Dashboard Pages
     path('', views.home, name='home'),
     path('leads/', views.leads, name='leads'),
