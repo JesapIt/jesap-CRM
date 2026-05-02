@@ -1,5 +1,8 @@
 ﻿from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
+from django.http import JsonResponse
+from django.db import connection
+from django.views.decorators.http import require_GET
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
 from django.contrib import messages
@@ -552,3 +555,14 @@ def partnership_change_status(request, pk):
     if new_status == Partnership.STATUS_NON_FINALIZZATA:
         return redirect(reverse('partnerships') + '?tab=non_finalizzate')
     return redirect(reverse('partnerships') + '?tab=partnership')
+
+
+@require_GET
+def healthz(request):
+    """Healthcheck per Railway. Verifica DB raggiungibile."""
+    try:
+        with connection.cursor() as c:
+            c.execute("SELECT 1")
+        return JsonResponse({"status": "ok"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "detail": str(e)}, status=503)
