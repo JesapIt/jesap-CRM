@@ -28,6 +28,15 @@ from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
 from django.conf import settings# Adicione este import lá no topo junto com os outros
 from django.contrib.auth.decorators import user_passes_test
 
+# --- IMPORTS per password reset custom views ---
+from django.contrib.auth.views import PasswordResetView as DjangoPasswordResetView
+from django.contrib.auth.views import PasswordResetConfirmView as DjangoPasswordResetConfirmView
+from django.contrib.auth.forms import SetPasswordForm
+from django.http import HttpResponseRedirect
+import logging
+
+logger = logging.getLogger(__name__)
+
 # RBAC: Editor = gruppo 'Editori' | staff admin | superuser
 def is_editor(user):
     return (
@@ -153,6 +162,56 @@ def register_step2(request, token):
             return redirect("login")
 
     return render(request, "dashboard/register_step2.html", {"email": email})
+
+
+# --- PASSWORD RESET (Custom with async email send) ---
+import threading
+
+
+def _send_reset_email_async(form, opts):
+    """Esegue form.save() in thread separato. Niente blocco worker su SMTP lento."""
+    try:
+        form.save(**opts)
+    except Exception as e:
+        logger.error(f"Async password reset email failed: {type(e).__name__}: {e}")
+
+
+class CustomPasswordResetView(DjangoPasswordResetView):
+    """Password reset con invio email in background thread (no worker timeout)."""
+
+    def form_valid(self, form):
+        opts = {
+            "use_https": self.request.is_secure(),
+            "token_generator": self.token_generator,
+            "from_email": self.from_email,
+            "email_template_name": self.email_template_name,
+            "subject_template_name": self.subject_template_name,
+            "request": self.request,
+            "html_email_template_name": self.html_email_template_name,
+            "extra_email_context": self.extra_email_context,
+        }
+        thread = threading.Thread(
+            target=_send_reset_email_async,
+            args=(form, opts),
+            daemon=True,
+        )
+        thread.start()
+        return HttpResponseRedirect(self.get_success_url())
+
+
+class CustomPasswordResetConfirmView(DjangoPasswordResetConfirmView):
+    """Password reset confirm with graceful error handling."""
+
+    def form_valid(self, form):
+        try:
+            return super().form_valid(form)
+        except Exception as e:
+            logger.error(f"Password reset error: {type(e).__name__}: {e}")
+            messages.error(
+                self.request,
+                "Errore durante il reset della password. Riprova più tardi.",
+            )
+            return self.form_invalid(form)
 
 
 # --- DASHBOARD VIEWS ---

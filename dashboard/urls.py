@@ -39,10 +39,10 @@ urlpatterns = [
     # Logout
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
-    # Password reset (Django built-in views + custom templates)
+    # Password reset (custom views with email error handling)
     path(
         'password-reset/',
-        auth_views.PasswordResetView.as_view(
+        views.CustomPasswordResetView.as_view(
             form_class=CaseInsensitivePasswordResetForm,
             template_name='dashboard/password_reset_form.html',
             email_template_name='registration/password_reset_email.html',
@@ -60,7 +60,7 @@ urlpatterns = [
     ),
     path(
         'reset/<uidb64>/<token>/',
-        auth_views.PasswordResetConfirmView.as_view(
+        views.CustomPasswordResetConfirmView.as_view(
             template_name='dashboard/password_reset_confirm.html',
         ),
         name='password_reset_confirm',
