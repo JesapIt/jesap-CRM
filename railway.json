@@ -6,8 +6,6 @@
   },
   "deploy": {
     "startCommand": "gunicorn setup.wsgi --bind 0.0.0.0:$PORT --log-file - --workers 2 --timeout 120",
-    "healthcheckPath": "/healthz",
-    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
