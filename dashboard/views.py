@@ -164,20 +164,39 @@ def register_step2(request, token):
     return render(request, "dashboard/register_step2.html", {"email": email})
 
 
-# --- PASSWORD RESET (Custom with email error handling) ---
+# --- PASSWORD RESET (Custom with async email send) ---
+import threading
+
+
+def _send_reset_email_async(form, opts):
+    """Esegue form.save() in thread separato. Niente blocco worker su SMTP lento."""
+    try:
+        form.save(**opts)
+    except Exception as e:
+        logger.error(f"Async password reset email failed: {type(e).__name__}: {e}")
+
+
 class CustomPasswordResetView(DjangoPasswordResetView):
-    """Password reset with graceful email error handling."""
+    """Password reset con invio email in background thread (no worker timeout)."""
 
     def form_valid(self, form):
-        try:
-            return super().form_valid(form)
-        except Exception as e:
-            logger.error(f"Email sending failed in password reset: {type(e).__name__}: {e}")
-            messages.error(
-                self.request,
-                "Errore durante l'invio della email. Riprova più tardi o contatta l'amministratore.",
-            )
-            return self.form_invalid(form)
+        opts = {
+            "use_https": self.request.is_secure(),
+            "token_generator": self.token_generator,
+            "from_email": self.from_email,
+            "email_template_name": self.email_template_name,
+            "subject_template_name": self.subject_template_name,
+            "request": self.request,
+            "html_email_template_name": self.html_email_template_name,
+            "extra_email_context": self.extra_email_context,
+        }
+        thread = threading.Thread(
+            target=_send_reset_email_async,
+            args=(form, opts),
+            daemon=True,
+        )
+        thread.start()
+        return HttpResponseRedirect(self.get_success_url())
 
 
 class CustomPasswordResetConfirmView(DjangoPasswordResetConfirmView):
