@@ -28,6 +28,15 @@ from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
 from django.conf import settings# Adicione este import lá no topo junto com os outros
 from django.contrib.auth.decorators import user_passes_test
 
+# --- IMPORTS per password reset custom views ---
+from django.contrib.auth.views import PasswordResetView as DjangoPasswordResetView
+from django.contrib.auth.views import PasswordResetConfirmView as DjangoPasswordResetConfirmView
+from django.contrib.auth.forms import SetPasswordForm
+from django.http import HttpResponseRedirect
+import logging
+
+logger = logging.getLogger(__name__)
+
 # RBAC: Editor = gruppo 'Editori' | staff admin | superuser
 def is_editor(user):
     return (
@@ -153,6 +162,37 @@ def register_step2(request, token):
             return redirect("login")
 
     return render(request, "dashboard/register_step2.html", {"email": email})
+
+
+# --- PASSWORD RESET (Custom with email error handling) ---
+class CustomPasswordResetView(DjangoPasswordResetView):
+    """Password reset with graceful email error handling."""
+
+    def form_valid(self, form):
+        try:
+            return super().form_valid(form)
+        except Exception as e:
+            logger.error(f"Email sending failed in password reset: {type(e).__name__}: {e}")
+            messages.error(
+                self.request,
+                "Errore durante l'invio della email. Riprova più tardi o contatta l'amministratore.",
+            )
+            return self.form_invalid(form)
+
+
+class CustomPasswordResetConfirmView(DjangoPasswordResetConfirmView):
+    """Password reset confirm with graceful error handling."""
+
+    def form_valid(self, form):
+        try:
+            return super().form_valid(form)
+        except Exception as e:
+            logger.error(f"Password reset error: {type(e).__name__}: {e}")
+            messages.error(
+                self.request,
+                "Errore durante il reset della password. Riprova più tardi.",
+            )
+            return self.form_invalid(form)
 
 
 # --- DASHBOARD VIEWS ---
