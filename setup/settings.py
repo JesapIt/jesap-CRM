@@ -30,6 +30,9 @@ else:
     if not hosts_env:
         raise ImproperlyConfigured("ALLOWED_HOSTS must be configured in production")
     ALLOWED_HOSTS = [host.strip() for host in hosts_env.split(',')]
+    # Railway healthcheck hostname must always be allowed
+    if 'healthcheck.railway.app' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('healthcheck.railway.app')
 
 # Application definition
 INSTALLED_APPS = [
