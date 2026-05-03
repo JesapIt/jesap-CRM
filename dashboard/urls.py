@@ -40,6 +40,7 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
     # Password reset (custom views with email error handling)
+    # from_email=None → usa DEFAULT_FROM_EMAIL (Resend onboarding@resend.dev)
     path(
         'password-reset/',
         views.CustomPasswordResetView.as_view(
@@ -47,7 +48,7 @@ urlpatterns = [
             template_name='dashboard/password_reset_form.html',
             email_template_name='registration/password_reset_email.html',
             subject_template_name='registration/password_reset_subject.txt',
-            from_email='noreply@jesap.it',
+            from_email=None,
         ),
         name='password_reset',
     ),
