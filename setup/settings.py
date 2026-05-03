@@ -4,6 +4,7 @@ Django settings for setup project.
 
 from pathlib import Path
 import os
+import sys
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
@@ -14,8 +15,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 _ENV_FILE = BASE_DIR / ".env"
 load_dotenv(dotenv_path=_ENV_FILE, override=True)
 
-# Quick-start development settings
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+
+def _env(key: str, default: str = "") -> str:
+    """Legge env var, strippa whitespace + virgolette letterali."""
+    return (os.getenv(key) or default).strip().strip('"').strip("'")
+
+
+# Diagnostica: stampa quali env critiche sono presenti (solo nomi, no valori)
+_critical_keys = ["DEBUG", "SECRET_KEY", "DATABASE_URL", "USE_POSTGRES",
+                  "ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "RAILWAY_ENVIRONMENT",
+                  "RAILWAY_PROJECT_ID", "PORT"]
+_present = [k for k in _critical_keys if os.getenv(k)]
+_missing = [k for k in _critical_keys if not os.getenv(k)]
+print(f"[settings:env] presenti={_present} mancanti={_missing}",
+      file=sys.stderr, flush=True)
+
+# Detect Railway runtime — se siamo lì, DATABASE_URL è OBBLIGATORIA
+ON_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+
+DEBUG = _env('DEBUG', 'True') == 'True'
 
 secret_key_env = os.getenv('SECRET_KEY')
 if not DEBUG and not secret_key_env:
@@ -77,10 +95,20 @@ TEMPLATES = [
 WSGI_APPLICATION = 'setup.wsgi.application'
 
 # Database
-FORCE_SQLITE = os.getenv("USE_SQLITE", "").lower() in {"1", "true", "yes", "y", "on"}
-FORCE_POSTGRES = os.getenv("USE_POSTGRES", "").lower() in {"1", "true", "yes", "y", "on"}
-DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip().strip('"').strip("'")
-SUPABASE_DIRECT_DB_HOST = os.getenv("SUPABASE_DIRECT_DB_HOST")
+FORCE_SQLITE = _env("USE_SQLITE").lower() in {"1", "true", "yes", "y", "on"}
+FORCE_POSTGRES = _env("USE_POSTGRES").lower() in {"1", "true", "yes", "y", "on"}
+DATABASE_URL = _env("DATABASE_URL")
+SUPABASE_DIRECT_DB_HOST = _env("SUPABASE_DIRECT_DB_HOST") or None
+
+# Fail-fast su Railway: se DATABASE_URL manca, esplodi subito con errore
+# chiaro nei log invece di cadere su SQLite (che produce errori criptici).
+if ON_RAILWAY and not DATABASE_URL:
+    raise ImproperlyConfigured(
+        "RAILWAY DEPLOY: DATABASE_URL è VUOTA o mancante. "
+        "Vai su Railway → tuo servizio → Variables → aggiungi DATABASE_URL "
+        "col valore postgresql://...supabase.co.../postgres "
+        "Quindi redeploya."
+    )
 
 # Validazione esplicita: scheme deve essere postgresql/postgres/sqlite ecc.
 # Senza questo, dj_database_url solleva "Scheme '://' is unknown" criptico.
