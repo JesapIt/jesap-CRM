@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'anymail',
     'dashboard',
 ]
 
@@ -234,27 +235,22 @@ AUTHENTICATION_BACKENDS = [
     "dashboard.auth_backends.EmailOrUsernameModelBackend",
 ]
 
-# Email: console backend automatico quando SMTP non configurato (dev senza crash).
-EMAIL_HOST = _env('EMAIL_HOST', 'smtp.gmail.com')
-try:
-    EMAIL_PORT = int(_env('EMAIL_PORT', '587'))
-except ValueError:
-    EMAIL_PORT = 587
-EMAIL_USE_TLS = _env('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = _env('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = _env('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = _env('DEFAULT_FROM_EMAIL', 'JESAP ERP <noreply@jesap.it>')
+# Email: Resend via HTTP API (django-anymail). Bypassa block SMTP outbound Railway.
+# Fallback console backend in dev se RESEND_API_KEY non settata.
+RESEND_API_KEY = _env('RESEND_API_KEY', '')
+DEFAULT_FROM_EMAIL = _env('DEFAULT_FROM_EMAIL', 'JESAP CRM <onboarding@resend.dev>')
 
-print(f"[settings:email] host={EMAIL_HOST} port={EMAIL_PORT} use_tls={EMAIL_USE_TLS} "
-      f"user={'<SET>' if EMAIL_HOST_USER else '<EMPTY>'} pwd={'<SET>' if EMAIL_HOST_PASSWORD else '<EMPTY>'}",
+if RESEND_API_KEY:
+    EMAIL_BACKEND = 'anymail.backends.resend.EmailBackend'
+    ANYMAIL = {
+        'RESEND_API_KEY': RESEND_API_KEY,
+    }
+else:
+    EMAIL_BACKEND = _env('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+
+print(f"[settings:email] backend={EMAIL_BACKEND} resend_key={'<SET>' if RESEND_API_KEY else '<EMPTY>'} "
+      f"from={DEFAULT_FROM_EMAIL}",
       file=sys.stderr, flush=True)
-
-_default_email_backend = (
-    'django.core.mail.backends.smtp.EmailBackend'
-    if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
-    else 'django.core.mail.backends.console.EmailBackend'
-)
-EMAIL_BACKEND = _env('EMAIL_BACKEND', _default_email_backend)
 LOGOUT_REDIRECT_URL = "login"
 
 # Logging: stdout (Railway raccoglie automaticamente)
