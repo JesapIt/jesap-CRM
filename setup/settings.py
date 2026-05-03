@@ -127,7 +127,17 @@ else:
             conn_health_checks=True,
         )
     }
-    
+
+# Startup log: quale DB sta usando l'app. Visibile nei Deploy Logs Railway.
+import sys as _sys
+_engine = DATABASES["default"].get("ENGINE", "?")
+_host = DATABASES["default"].get("HOST", "(file)")
+print(
+    f"[settings] DB engine={_engine} host={_host} DEBUG={DEBUG} "
+    f"USE_POSTGRES={FORCE_POSTGRES} DATABASE_URL_set={bool(DATABASE_URL)}",
+    file=_sys.stderr, flush=True,
+)
+
     engine = DATABASES["default"].get("ENGINE", "")
     if engine.endswith("postgresql") or engine.endswith("postgresql_psycopg2") or engine.endswith("postgresql_psycopg"):
         DATABASES["default"].setdefault("OPTIONS", {})
