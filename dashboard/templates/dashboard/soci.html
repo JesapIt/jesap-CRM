@@ -92,12 +92,14 @@
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <div class="top-sort-controls">
           <span class="sort__label">Ordina per:</span>
-          <select id="top-sort-select" class="top-sort-select">
-            <option value="nome">Nome</option>
-            <option value="ruolo">Ruolo</option>
-            <option value="area">Area</option>
+          <select id="top-sort-select" class="top-sort-select" data-current-dir="{{ current_dir|default:'asc' }}">
+            <option value="nome" {% if current_sort == 'nome' %}selected{% endif %}>Nome</option>
+            <option value="ruolo" {% if current_sort == 'ruolo' %}selected{% endif %}>Ruolo</option>
+            <option value="area" {% if current_sort == 'area' %}selected{% endif %}>Area</option>
           </select>
-          <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+          <button id="top-sort-dir" class="icon-button" type="button"
+                  style="transition: transform 0.2s; transform: {% if current_dir == 'desc' %}rotate(180deg){% else %}rotate(0deg){% endif %};"
+                  title="Inverti direzione (asc/desc)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
           </button>
         </div>
@@ -289,11 +291,11 @@
       {% if page_obj.has_other_pages %}
       <nav class="pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px;">
         {% if page_obj.has_previous %}
-          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&sort={{ current_sort|default:'nome' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
         {% endif %}
         <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
         {% if page_obj.has_next %}
-          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&sort={{ current_sort|default:'nome' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
         {% endif %}
       </nav>
       {% endif %}
@@ -302,7 +304,6 @@
   </section>
 
   {% if not is_admin_tab %}
-  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       var tbody = document.getElementById("table-body");
@@ -328,43 +329,28 @@
         });
       });
 
+      // --- Sort → SERVER-SIDE via URL params (?sort=&dir=) ---
       var topSelect = document.getElementById("top-sort-select");
       var topDirBtn = document.getElementById("top-sort-dir");
-      var currentDir = "asc";
 
-      function doSort(key, dir) {
-        // Type letto da <th data-sort-type="..."> (text|number|date|percent), default "text"
-        var type = SortUtils.typeForKey(key);
-        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
-        // Mantieni accoppiamento riga principale + riga dettaglio.
-        var mainRows = Array.from(tbody.querySelectorAll(".soci-row"));
-        var pairs = mainRows.map(function (row) {
-          var detailId = row.dataset.rowId;
-          var detail = detailId ? tbody.querySelector("#" + detailId) : null;
-          return { row: row, detail: detail };
-        });
-        pairs.sort(function (a, b) {
-          var cellA = a.row.querySelector('[data-sort-key="' + key + '"]');
-          var cellB = b.row.querySelector('[data-sort-key="' + key + '"]');
-          var vA = SortUtils.parseValue(cellA && cellA.textContent, type);
-          var vB = SortUtils.parseValue(cellB && cellB.textContent, type);
-          return SortUtils.compare(vA, vB, dir);
-        });
-        var frag = document.createDocumentFragment();
-        pairs.forEach(function (p) {
-          frag.appendChild(p.row);
-          if (p.detail) frag.appendChild(p.detail);
-        });
-        tbody.appendChild(frag);
+      function navigateWithSort(sortKey, dir) {
+        var params = new URLSearchParams(window.location.search);
+        params.set("sort", sortKey);
+        params.set("dir", dir);
+        params.delete("page");
+        window.location.search = params.toString();
       }
 
       if (topSelect && topDirBtn) {
-        topSelect.addEventListener("change", function (e) { doSort(e.target.value, currentDir); });
-        topDirBtn.addEventListener("click", function () {
-          currentDir = currentDir === "asc" ? "desc" : "asc";
-          doSort(topSelect.value, currentDir);
+        topSelect.addEventListener("change", function (e) {
+          var dir = topSelect.dataset.currentDir || "asc";
+          navigateWithSort(e.target.value, dir);
         });
-        doSort("nome", "asc");
+        topDirBtn.addEventListener("click", function () {
+          var cur = topSelect.dataset.currentDir || "asc";
+          var next = cur === "asc" ? "desc" : "asc";
+          navigateWithSort(topSelect.value, next);
+        });
       }
     });
   </script>

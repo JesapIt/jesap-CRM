@@ -44,6 +44,127 @@ def is_editor(user):
         and (user.is_superuser or user.is_staff or user.groups.filter(name='Editori').exists())
     )
 
+
+# ============================================================
+# SORTING HELPERS — sort server-side cross-page
+# Le date in DB sono salvate come stringhe (DD/MM/YYYY o YYYY-MM-DD).
+# `order_by` di Django sui TextField ordina alfabeticamente — sbagliato.
+# Soluzione: load full queryset → sort in Python con parser type-aware → paginate.
+# ============================================================
+
+import re as _re
+from functools import cmp_to_key as _cmp_to_key
+
+_DATE_DMY = _re.compile(r'^(\d{1,2})/(\d{1,2})/(\d{4})$')
+_DATE_ISO = _re.compile(r'^(\d{4})-(\d{1,2})-(\d{1,2})$')
+_DATE_DMY_DASH = _re.compile(r'^(\d{1,2})-(\d{1,2})-(\d{4})$')
+
+
+def _make_sort_key(value):
+    """
+    Converte un valore (qualsiasi tipo) in una chiave sortabile.
+    Gestisce date DD/MM/YYYY, ISO YYYY-MM-DD, numeri/currency, percentuali, testo.
+    Ritorna `None` per valori vuoti (sinkati in fondo dal comparator).
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s in ("-", "None", "N/A"):
+        return None
+
+    # Date DD/MM/YYYY → ISO sortable
+    m = _DATE_DMY.match(s)
+    if m:
+        return f"{m.group(3)}{m.group(2).zfill(2)}{m.group(1).zfill(2)}"
+    # Date YYYY-MM-DD
+    m = _DATE_ISO.match(s)
+    if m:
+        return f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}"
+    # Date DD-MM-YYYY
+    m = _DATE_DMY_DASH.match(s)
+    if m:
+        return f"{m.group(3)}{m.group(2).zfill(2)}{m.group(1).zfill(2)}"
+
+    # Number/currency/percent: estrai cifre
+    cleaned = _re.sub(r'[^0-9.,-]+', '', s)
+    if cleaned and _re.search(r'\d', cleaned):
+        try:
+            # IT format: 1.234,56 → 1234.56
+            if ',' in cleaned and '.' in cleaned:
+                cleaned = cleaned.replace('.', '').replace(',', '.')
+            elif ',' in cleaned:
+                cleaned = cleaned.replace(',', '.')
+            return float(cleaned)
+        except ValueError:
+            pass
+
+    # Text fallback
+    return s.lower()
+
+
+def _sort_records(records, sort_key, sort_dir, sort_map, default_sort):
+    """
+    Ordina lista records in Python.
+    sort_map: dict {sort_key: callable_or_attrname}
+    default_sort: tuple (key, dir) usato se sort_key non valido
+    Empty values sinkano sempre in fondo (asc + desc).
+    Ritorna (records_sorted, sort_key_effettivo, sort_dir_effettivo).
+    """
+    if sort_key not in sort_map:
+        sort_key, sort_dir = default_sort
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+
+    accessor = sort_map[sort_key]
+
+    def get_key(obj):
+        try:
+            val = accessor(obj) if callable(accessor) else getattr(obj, accessor, None)
+        except Exception:
+            val = None
+        return _make_sort_key(val)
+
+    sign = 1 if sort_dir == "asc" else -1
+
+    def cmp(a, b):
+        ka = get_key(a)
+        kb = get_key(b)
+        # Empty values sempre in fondo (regardless dir)
+        if ka is None and kb is None:
+            return 0
+        if ka is None:
+            return 1
+        if kb is None:
+            return -1
+        # Tipi diversi (es. float vs str): confronta come stringa
+        try:
+            if ka < kb:
+                return -1 * sign
+            if ka > kb:
+                return 1 * sign
+        except TypeError:
+            sa, sb = str(ka), str(kb)
+            if sa < sb:
+                return -1 * sign
+            if sa > sb:
+                return 1 * sign
+        return 0
+
+    records.sort(key=_cmp_to_key(cmp))
+    return records, sort_key, sort_dir
+
+
+def _read_sort_params(request, allowed_keys, default_sort):
+    """Legge ?sort= e ?dir= dalla query string, valida contro allowed_keys."""
+    sort_key = request.GET.get("sort", "").strip()
+    sort_dir = request.GET.get("dir", "asc").strip().lower()
+    if sort_key not in allowed_keys:
+        sort_key = default_sort[0]
+        sort_dir = default_sort[1]
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+    return sort_key, sort_dir
+
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
     if request.method == "POST":
@@ -204,26 +325,47 @@ def home(request):
 def leads(request):
     return render(request, "dashboard/leads.html")
 
+# Sort map per Partnership (tab "partnership")
+PARTNERSHIP_SORT_MAP = {
+    "id": "id_codice",
+    "nome": "partnership",
+    "status": "status_partnership",
+    "data_firma": "data_firma",
+    "anno": "anno",
+}
+PARTNERSHIP_SORT_DEFAULT = ("nome", "asc")
+
+# Sort map per Partnership tab "non_finalizzate" e "lead"
+PARTNERSHIP_NF_SORT_MAP = {
+    "nome": "partnership",
+    "realta": "partnership",
+    "contatti": "contatti",
+    "data_firma": "data_firma",
+    "anno": "anno",
+}
+PARTNERSHIP_NF_SORT_DEFAULT = ("nome", "asc")
+
+
 @login_required(login_url="login")
 def partnerships(request):
     # Captura a tab atual (padrão: partnership)
     tab = request.GET.get("tab", "partnership")
-    
+
     # Captura os parâmetros de busca e filtro
     search_query = request.GET.get("q", "").strip()
     status_filter = request.GET.get("status", "").strip()
-    
+
     context = {
         "current_tab": tab,
         "search_query": search_query,
         "status_filter": status_filter,
         "is_editor": is_editor(request.user),
     }
-    
+
     if tab == "partnership":
         queryset = Partnership.objects.filter(
             status_partnership__in=Partnership.STATUS_PARTNERSHIP_TAB
-        ).order_by('partnership')
+        )
 
         stati_partnership = list(Partnership.STATUS_PARTNERSHIP_TAB)
         context["stati_partnership"] = stati_partnership
@@ -238,16 +380,24 @@ def partnerships(request):
         if status_filter:
             queryset = queryset.filter(status_partnership=status_filter)
 
-        paginator = Paginator(queryset, 25)
+        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_SORT_MAP, PARTNERSHIP_SORT_DEFAULT)
+        all_records = list(queryset)
+        all_records, sort_key, sort_dir = _sort_records(
+            all_records, sort_key, sort_dir, PARTNERSHIP_SORT_MAP, PARTNERSHIP_SORT_DEFAULT
+        )
+
+        paginator = Paginator(all_records, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
         context["partnerships"] = page_obj
         context["dati_tabella"] = page_obj
         context["page_obj"] = page_obj
+        context["current_sort"] = sort_key
+        context["current_dir"] = sort_dir
 
     elif tab == "non_finalizzate":
         queryset = Partnership.objects.filter(
             status_partnership__iexact=Partnership.STATUS_NON_FINALIZZATA
-        ).order_by('partnership')
+        )
 
         if search_query:
             queryset = queryset.filter(
@@ -255,39 +405,66 @@ def partnerships(request):
                 Q(contatti__icontains=search_query)
             )
 
-        paginator = Paginator(queryset, 25)
+        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT)
+        all_records = list(queryset)
+        all_records, sort_key, sort_dir = _sort_records(
+            all_records, sort_key, sort_dir, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT
+        )
+
+        paginator = Paginator(all_records, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
         context["non_finalizzate"] = page_obj
         context["dati_tabella"] = page_obj
         context["page_obj"] = page_obj
+        context["current_sort"] = sort_key
+        context["current_dir"] = sort_dir
 
     elif tab == "lead":
         queryset = Partnership.objects.filter(
             status_partnership__iexact=Partnership.STATUS_TRATTATIVA
-        ).order_by('partnership')
+        )
 
         if search_query:
             queryset = queryset.filter(partnership__icontains=search_query)
 
-        paginator = Paginator(queryset, 25)
+        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT)
+        all_records = list(queryset)
+        all_records, sort_key, sort_dir = _sort_records(
+            all_records, sort_key, sort_dir, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT
+        )
+
+        paginator = Paginator(all_records, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
         context["leads"] = page_obj
         context["dati_tabella"] = page_obj
         context["page_obj"] = page_obj
+        context["current_sort"] = sort_key
+        context["current_dir"] = sort_dir
 
     else:
         context["dati_tabella"] = []
 
     return render(request, "dashboard/partnerships.html", context)
 
+# Sort map per Progetti: chiave URL → attrname o lambda
+PROGETTI_SORT_MAP = {
+    "progetto": "nome_progetto",
+    "stato": "stato",
+    "pm": "pm",
+    "provenienza": "provenienza",
+    "data_inizio": "data_inizio",
+    "data_fine": "data_fine_contratto",
+    "fatturato": "fatturato_senza_iva",
+}
+PROGETTI_SORT_DEFAULT = ("progetto", "asc")
+
+
 @login_required(login_url="login")
 def progetti(request):
     search_query = request.GET.get("q", "").strip()
     stato_filter = request.GET.get("stato", "").strip()
 
-    queryset = Progetti.objects.all().order_by('nome_progetto')
-
-    # Sorgente di verità: choices.py (allineato al foglio ufficiale).
+    queryset = Progetti.objects.all()
     stati = ch.STATO_PROGETTO_VALUES
 
     if search_query:
@@ -300,7 +477,14 @@ def progetti(request):
     if stato_filter:
         queryset = queryset.filter(stato=stato_filter)
 
-    paginator = Paginator(queryset, 25)
+    # Sort server-side: load all → sort Python → paginate
+    sort_key, sort_dir = _read_sort_params(request, PROGETTI_SORT_MAP, PROGETTI_SORT_DEFAULT)
+    all_records = list(queryset)
+    all_records, sort_key, sort_dir = _sort_records(
+        all_records, sort_key, sort_dir, PROGETTI_SORT_MAP, PROGETTI_SORT_DEFAULT
+    )
+
+    paginator = Paginator(all_records, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
 
     return render(request, "dashboard/progetti.html", {
@@ -310,6 +494,8 @@ def progetti(request):
         "stato_filter": stato_filter,
         "stati": stati,
         "is_editor": is_editor(request.user),
+        "current_sort": sort_key,
+        "current_dir": sort_dir,
     })
 
 
@@ -410,7 +596,7 @@ def soci(request):
         context["soci_list"] = []
     else:
         # Base filter: only active members
-        queryset = Soci.objects.filter(status__iexact="Associato").order_by("nome_e_cognome")
+        queryset = Soci.objects.filter(status__iexact="Associato")
 
         if tab == "board":
             queryset = queryset.filter(
@@ -431,12 +617,30 @@ def soci(request):
                 | Q(email_jesap__icontains=search_query)
             )
 
-        paginator = Paginator(queryset, 25)
+        # Sort server-side cross-page
+        sort_key, sort_dir = _read_sort_params(request, SOCI_SORT_MAP, SOCI_SORT_DEFAULT)
+        all_records = list(queryset)
+        all_records, sort_key, sort_dir = _sort_records(
+            all_records, sort_key, sort_dir, SOCI_SORT_MAP, SOCI_SORT_DEFAULT
+        )
+
+        paginator = Paginator(all_records, 25)
         page_obj = paginator.get_page(request.GET.get("page"))
         context["soci_list"] = page_obj
         context["page_obj"] = page_obj
+        context["current_sort"] = sort_key
+        context["current_dir"] = sort_dir
 
     return render(request, "dashboard/soci.html", context)
+
+
+# Sort map per Soci
+SOCI_SORT_MAP = {
+    "nome": "nome_e_cognome",
+    "ruolo": "ruolo",
+    "area": "area_di_appartenenza",
+}
+SOCI_SORT_DEFAULT = ("nome", "asc")
 
 
 def _is_admin_user(u):

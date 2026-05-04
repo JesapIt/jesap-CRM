@@ -81,15 +81,17 @@
 
       <div class="top-sort-controls">
         <span class="sort__label">Ordina per:</span>
-        <select id="top-sort-select" class="top-sort-select">
-          <option value="progetto">Nome</option>
-          <option value="stato">Stato</option>
-          <option value="pm">PM</option>
-          <option value="data_inizio">Inizio</option>
-          <option value="data_fine">Fine</option>
-          <option value="fatturato">Fatturato</option>
+        <select id="top-sort-select" class="top-sort-select" data-current-dir="{{ current_dir|default:'asc' }}">
+          <option value="progetto" {% if current_sort == 'progetto' %}selected{% endif %}>Nome</option>
+          <option value="stato" {% if current_sort == 'stato' %}selected{% endif %}>Stato</option>
+          <option value="pm" {% if current_sort == 'pm' %}selected{% endif %}>PM</option>
+          <option value="data_inizio" {% if current_sort == 'data_inizio' %}selected{% endif %}>Inizio</option>
+          <option value="data_fine" {% if current_sort == 'data_fine' %}selected{% endif %}>Fine</option>
+          <option value="fatturato" {% if current_sort == 'fatturato' %}selected{% endif %}>Fatturato</option>
         </select>
-        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+        <button id="top-sort-dir" class="icon-button" type="button"
+                style="transition: transform 0.2s; transform: {% if current_dir == 'desc' %}rotate(180deg){% else %}rotate(0deg){% endif %};"
+                title="Inverti direzione (asc/desc)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
         </button>
       </div>
@@ -193,17 +195,16 @@
     {% if page_obj.has_other_pages %}
     <nav class="pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px;">
       {% if page_obj.has_previous %}
-        <a href="?q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+        <a href="?q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}&sort={{ current_sort|default:'progetto' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
       {% endif %}
       <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a href="?q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+        <a href="?q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}&sort={{ current_sort|default:'progetto' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
       {% endif %}
     </nav>
     {% endif %}
   </section>
 
-  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
@@ -226,47 +227,36 @@
         if (!row) return;
         const detailsRow = row.nextElementSibling;
         if (!detailsRow || !detailsRow.classList.contains("progetti-details-row")) return;
-        
+
         const wrap = detailsRow.querySelector(".progetti-details-wrap");
         const isExpanded = row.classList.toggle("expanded");
         wrap.style.maxHeight = isExpanded ? wrap.scrollHeight + "px" : "0px";
       });
 
-      // 3. Sorting Logica Unificata
+      // 3. Sorting → SERVER-SIDE via URL params (?sort=&dir=)
+      // Ordina TUTTI i record cross-page, non solo la pagina visualizzata.
       const topSelect = document.getElementById("top-sort-select");
       const topDirBtn = document.getElementById("top-sort-dir");
-      let currentDir = "asc";
 
-      function doSort(key, dir) {
-        // Type letto da <th data-sort-type="..."> (text|number|date|percent)
-        const type = SortUtils.typeForKey(key);
-        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
-
-        const rows = Array.from(tbody.children).filter(r => r.classList.contains("progetti-row"));
-        const pairs = rows.map(r => {
-          const cell = r.querySelector(`[data-sort-key="${key}"]`);
-          return {
-            master: r,
-            detail: r.nextElementSibling,
-            val: SortUtils.parseValue(cell && cell.textContent, type),
-          };
-        });
-
-        pairs.sort((a, b) => SortUtils.compare(a.val, b.val, dir));
-
-        const frag = document.createDocumentFragment();
-        pairs.forEach(p => { frag.appendChild(p.master); if (p.detail) frag.appendChild(p.detail); });
-        tbody.appendChild(frag);
+      function navigateWithSort(sortKey, dir) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("sort", sortKey);
+        params.set("dir", dir);
+        params.delete("page"); // reset paginazione quando cambia sort
+        window.location.search = params.toString();
       }
 
-      topSelect.addEventListener("change", (e) => doSort(e.target.value, currentDir));
-      topDirBtn.addEventListener("click", () => {
-        currentDir = currentDir === "asc" ? "desc" : "asc";
-        doSort(topSelect.value, currentDir);
-      });
-      
-      // Sort iniziale per Nome
-      doSort("progetto", "asc");
+      if (topSelect && topDirBtn) {
+        topSelect.addEventListener("change", (e) => {
+          const dir = topSelect.dataset.currentDir || "asc";
+          navigateWithSort(e.target.value, dir);
+        });
+        topDirBtn.addEventListener("click", () => {
+          const cur = topSelect.dataset.currentDir || "asc";
+          const next = cur === "asc" ? "desc" : "asc";
+          navigateWithSort(topSelect.value, next);
+        });
+      }
     });
   </script>
 {% endblock %}
