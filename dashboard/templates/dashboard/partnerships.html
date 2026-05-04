@@ -155,20 +155,22 @@
 
       <div class="top-sort-controls">
         <span class="sort__label">Ordina per:</span>
-        <select id="top-sort-select" class="top-sort-select">
+        <select id="top-sort-select" class="top-sort-select" data-current-dir="{{ current_dir|default:'asc' }}">
           {% if current_tab == 'partnership' %}
-            <option value="id">ID</option>
-            <option value="nome">Nome Azienda</option>
-            <option value="status">Status</option>
-            <option value="data_firma">Data firma</option>
-            <option value="anno">Anno</option>
+            <option value="id" {% if current_sort == 'id' %}selected{% endif %}>ID</option>
+            <option value="nome" {% if current_sort == 'nome' %}selected{% endif %}>Nome Azienda</option>
+            <option value="status" {% if current_sort == 'status' %}selected{% endif %}>Status</option>
+            <option value="data_firma" {% if current_sort == 'data_firma' %}selected{% endif %}>Data firma</option>
+            <option value="anno" {% if current_sort == 'anno' %}selected{% endif %}>Anno</option>
           {% else %}
-            <option value="realta">Realtà</option>
-            <option value="data_firma">Data firma</option>
-            <option value="anno">Anno</option>
+            <option value="realta" {% if current_sort == 'realta' or current_sort == 'nome' %}selected{% endif %}>Realtà</option>
+            <option value="data_firma" {% if current_sort == 'data_firma' %}selected{% endif %}>Data firma</option>
+            <option value="anno" {% if current_sort == 'anno' %}selected{% endif %}>Anno</option>
           {% endif %}
         </select>
-        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+        <button id="top-sort-dir" class="icon-button" type="button"
+                style="transition: transform 0.2s; transform: {% if current_dir == 'desc' %}rotate(180deg){% else %}rotate(0deg){% endif %};"
+                title="Inverti direzione (asc/desc)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
         </button>
       </div>
@@ -434,18 +436,17 @@
       {% if page_obj.has_other_pages %}
       <nav class="pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:24px;">
         {% if page_obj.has_previous %}
-          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&sort={{ current_sort|default:'nome' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
         {% endif %}
         <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
         {% if page_obj.has_next %}
-          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&status={{ status_filter|urlencode }}&sort={{ current_sort|default:'nome' }}&dir={{ current_dir|default:'asc' }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
         {% endif %}
       </nav>
       {% endif %}
     </div>
   </section>
 
-  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
@@ -488,51 +489,29 @@
         });
       });
 
-      // --- Sort ---
+      // --- Sort → SERVER-SIDE via URL params (?sort=&dir=) ---
+      // Ordina TUTTI i record cross-page, non solo la pagina visualizzata.
       const topSelect = document.getElementById("top-sort-select");
       const topDirBtn = document.getElementById("top-sort-dir");
-      let currentDir = "asc";
 
-      function doSort(key, dir) {
-        if (!key) return;
-        // Type letto da <th data-sort-type="..."> (text|number|date|percent)
-        const type = SortUtils.typeForKey(key);
-        topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
-
-        // Raccogli coppie (riga principale, riga dettaglio se presente)
-        const mainRows = Array.from(tbody.querySelectorAll(".partner-row"));
-        const pairs = mainRows.map(row => {
-          const detailId = row.dataset.rowId;
-          const detail = detailId ? tbody.querySelector(`#${detailId}`) : null;
-          return { row, detail };
-        });
-
-        pairs.sort((a, b) => {
-          const cellA = a.row.querySelector(`[data-sort-key="${key}"]`);
-          const cellB = b.row.querySelector(`[data-sort-key="${key}"]`);
-          const vA = SortUtils.parseValue(cellA && cellA.textContent, type);
-          const vB = SortUtils.parseValue(cellB && cellB.textContent, type);
-          return SortUtils.compare(vA, vB, dir);
-        });
-
-        const frag = document.createDocumentFragment();
-        pairs.forEach(p => {
-          frag.appendChild(p.row);
-          if (p.detail) frag.appendChild(p.detail);
-        });
-        tbody.appendChild(frag);
+      function navigateWithSort(sortKey, dir) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("sort", sortKey);
+        params.set("dir", dir);
+        params.delete("page");
+        window.location.search = params.toString();
       }
 
       if (topSelect && topDirBtn) {
-        topSelect.addEventListener("change", (e) => doSort(e.target.value, currentDir));
-        topDirBtn.addEventListener("click", () => {
-          currentDir = currentDir === "asc" ? "desc" : "asc";
-          doSort(topSelect.value, currentDir);
+        topSelect.addEventListener("change", (e) => {
+          const dir = topSelect.dataset.currentDir || "asc";
+          navigateWithSort(e.target.value, dir);
         });
-
-        if(topSelect.options.length > 0) {
-            doSort(topSelect.value, "asc");
-        }
+        topDirBtn.addEventListener("click", () => {
+          const cur = topSelect.dataset.currentDir || "asc";
+          const next = cur === "asc" ? "desc" : "asc";
+          navigateWithSort(topSelect.value, next);
+        });
       }
     });
   </script>
