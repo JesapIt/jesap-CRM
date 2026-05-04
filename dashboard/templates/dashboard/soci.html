@@ -1,4 +1,5 @@
 {% extends "dashboard/base_figma.html" %}
+{% load static %}
 
 {% block title %}JESAP Gestionale - Soci{% endblock %}
 
@@ -301,6 +302,7 @@
   </section>
 
   {% if not is_admin_tab %}
+  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       var tbody = document.getElementById("table-body");
@@ -331,6 +333,8 @@
       var currentDir = "asc";
 
       function doSort(key, dir) {
+        // Type letto da <th data-sort-type="..."> (text|number|date|percent), default "text"
+        var type = SortUtils.typeForKey(key);
         topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
         // Mantieni accoppiamento riga principale + riga dettaglio.
         var mainRows = Array.from(tbody.querySelectorAll(".soci-row"));
@@ -342,9 +346,9 @@
         pairs.sort(function (a, b) {
           var cellA = a.row.querySelector('[data-sort-key="' + key + '"]');
           var cellB = b.row.querySelector('[data-sort-key="' + key + '"]');
-          var vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
-          var vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
-          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+          var vA = SortUtils.parseValue(cellA && cellA.textContent, type);
+          var vB = SortUtils.parseValue(cellB && cellB.textContent, type);
+          return SortUtils.compare(vA, vB, dir);
         });
         var frag = document.createDocumentFragment();
         pairs.forEach(function (p) {

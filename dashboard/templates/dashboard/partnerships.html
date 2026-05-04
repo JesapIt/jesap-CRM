@@ -1,4 +1,5 @@
 {% extends "dashboard/base_figma.html" %}
+{% load static %}
 
 {% block title %}JESAP Gestionale - Partnerships{% endblock %}
 
@@ -159,8 +160,11 @@
             <option value="id">ID</option>
             <option value="nome">Nome Azienda</option>
             <option value="status">Status</option>
+            <option value="data_firma">Data firma</option>
+            <option value="anno">Anno</option>
           {% else %}
             <option value="realta">Realtà</option>
+            <option value="data_firma">Data firma</option>
             <option value="anno">Anno</option>
           {% endif %}
         </select>
@@ -202,7 +206,7 @@
               <th class="partner-sort" data-sort-key="codice" data-sort-type="text">Codice</th>
               <th class="partner-sort is-sorted is-asc" data-sort-key="nome" data-sort-type="text">Partnership</th>
               <th class="partner-sort" data-sort-key="status" data-sort-type="text">Status</th>
-              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="text">Data firma</th>
+              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="date">Data firma</th>
               <th class="partner-sort" data-sort-key="anno" data-sort-type="number">Anno</th>
               <th>Cartella Drive</th>
               {% if is_editor %}
@@ -221,7 +225,7 @@
             <tr>
               <th class="partner-sort is-sorted is-asc" data-sort-key="nome" data-sort-type="text">Realtà</th>
               <th class="partner-sort" data-sort-key="contatti" data-sort-type="text">Contatti</th>
-              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="text">Periodo</th>
+              <th class="partner-sort" data-sort-key="data_firma" data-sort-type="date">Periodo</th>
               <th class="partner-sort" data-sort-key="anno" data-sort-type="number">Anno</th>
               <th>Cartella Drive</th>
               {% if is_editor %}
@@ -441,6 +445,7 @@
     </div>
   </section>
 
+  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
@@ -490,7 +495,8 @@
 
       function doSort(key, dir) {
         if (!key) return;
-        const type = (key === "id" || key === "anno") ? "number" : "text";
+        // Type letto da <th data-sort-type="..."> (text|number|date|percent)
+        const type = SortUtils.typeForKey(key);
         topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
 
         // Raccogli coppie (riga principale, riga dettaglio se presente)
@@ -502,17 +508,11 @@
         });
 
         pairs.sort((a, b) => {
-          let cellA = a.row.querySelector(`[data-sort-key="${key}"]`);
-          let cellB = b.row.querySelector(`[data-sort-key="${key}"]`);
-
-          let vA = cellA ? cellA.textContent.trim().toLowerCase() : "";
-          let vB = cellB ? cellB.textContent.trim().toLowerCase() : "";
-
-          if (type === "number") {
-            vA = parseFloat(vA.replace(/[^0-9.-]+/g, "")) || 0;
-            vB = parseFloat(vB.replace(/[^0-9.-]+/g, "")) || 0;
-          }
-          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+          const cellA = a.row.querySelector(`[data-sort-key="${key}"]`);
+          const cellB = b.row.querySelector(`[data-sort-key="${key}"]`);
+          const vA = SortUtils.parseValue(cellA && cellA.textContent, type);
+          const vB = SortUtils.parseValue(cellB && cellB.textContent, type);
+          return SortUtils.compare(vA, vB, dir);
         });
 
         const frag = document.createDocumentFragment();

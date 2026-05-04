@@ -1,4 +1,5 @@
 {% extends "dashboard/base_figma.html" %}
+{% load static %}
 
 {% block title %}JESAP Gestionale - Progetti{% endblock %}
 
@@ -85,6 +86,7 @@
           <option value="stato">Stato</option>
           <option value="pm">PM</option>
           <option value="data_inizio">Inizio</option>
+          <option value="data_fine">Fine</option>
           <option value="fatturato">Fatturato</option>
         </select>
         <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
@@ -109,8 +111,8 @@
             <th class="progetti-sort" data-sort-key="stato" data-sort-type="text">Stato</th>
             <th class="progetti-sort" data-sort-key="pm" data-sort-type="text">PM</th>
             <th class="progetti-sort" data-sort-key="provenienza" data-sort-type="text">Provenienza</th>
-            <th class="progetti-sort" data-sort-key="data_inizio" data-sort-type="text">Inizio</th>
-            <th class="progetti-sort" data-sort-key="data_fine" data-sort-type="text">Fine</th>
+            <th class="progetti-sort" data-sort-key="data_inizio" data-sort-type="date">Inizio</th>
+            <th class="progetti-sort" data-sort-key="data_fine" data-sort-type="date">Fine</th>
             <th class="progetti-sort" data-sort-key="fatturato" data-sort-type="number">Fatturato</th>
             {% if is_editor %}<th style="text-align: right;">Azioni</th>{% endif %}
             <th></th>
@@ -201,6 +203,7 @@
     {% endif %}
   </section>
 
+  <script src="{% static 'dashboard/js/table-sort.js' %}"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
@@ -235,24 +238,21 @@
       let currentDir = "asc";
 
       function doSort(key, dir) {
-        const type = key === "fatturato" ? "number" : "text";
+        // Type letto da <th data-sort-type="..."> (text|number|date|percent)
+        const type = SortUtils.typeForKey(key);
         topDirBtn.style.transform = dir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
 
         const rows = Array.from(tbody.children).filter(r => r.classList.contains("progetti-row"));
-        const pairs = rows.map(r => ({
-          master: r,
-          detail: r.nextElementSibling,
-          val: (r.querySelector(`[data-sort-key="${key}"]`)?.textContent.trim() || "").toLowerCase()
-        }));
-
-        pairs.sort((a, b) => {
-          let vA = a.val, vB = b.val;
-          if (type === "number") {
-            vA = parseFloat(vA.replace(/[^0-9.-]+/g, "")) || 0;
-            vB = parseFloat(vB.replace(/[^0-9.-]+/g, "")) || 0;
-          }
-          return dir === "asc" ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+        const pairs = rows.map(r => {
+          const cell = r.querySelector(`[data-sort-key="${key}"]`);
+          return {
+            master: r,
+            detail: r.nextElementSibling,
+            val: SortUtils.parseValue(cell && cell.textContent, type),
+          };
         });
+
+        pairs.sort((a, b) => SortUtils.compare(a.val, b.val, dir));
 
         const frag = document.createDocumentFragment();
         pairs.forEach(p => { frag.appendChild(p.master); if (p.detail) frag.appendChild(p.detail); });
