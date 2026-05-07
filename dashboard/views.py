@@ -167,6 +167,8 @@ def _read_sort_params(request, allowed_keys, default_sort):
 
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
+    if request.user.is_authenticated:
+        return redirect(reverse("home"))
     if request.method == "POST":
         # Sanitizzazione: trim + lowercase su identificativo
         u = (request.POST.get("username") or "").strip().lower()
