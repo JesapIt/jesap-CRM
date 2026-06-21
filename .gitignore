@@ -212,3 +212,6 @@ __marimo__/
 
 # Claude Code local config
 .claude/
+
+# Misc PDF stray files
+dashboard/templates/dashboard/pages/*.pdf

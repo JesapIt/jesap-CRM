@@ -24,7 +24,7 @@ from . import choices as ch
 from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.core import signing
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership
+from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, Lead
 from django.conf import settings# Adicione este import lá no topo junto com os outros
 from django.contrib.auth.decorators import user_passes_test
 
@@ -323,9 +323,103 @@ class CustomPasswordResetConfirmView(DjangoPasswordResetConfirmView):
 def home(request):
     return render(request, "dashboard/home.html")
 
+# Sort map per Leads
+LEADS_SORT_MAP = {
+    "lead_id": "lead_id",
+    "azienda": "azienda",
+    "referente": "referente",
+    "owner": "owner",
+    "fase": "fase_attuale",
+    "stato": "stato_lead",
+    "contratto": "stato_contratto",
+    "priorita": "priorita",
+    "valore_stimato": "valore_stimato",
+    "valore_ponderato": "valore_ponderato",
+    "probabilita": "probabilita",
+    "data_creazione": "data_creazione",
+    "data_primo_contatto": "data_primo_contatto",
+    "data_prossima_azione": "data_prossima_azione",
+}
+LEADS_SORT_DEFAULT = ("data_creazione", "desc")
+
+
 @login_required(login_url="login")
 def leads(request):
-    return render(request, "dashboard/leads.html")
+    """
+    BD Lead Control — lista pipeline con filtri e sort server-side cross-page.
+
+    Query params supportati:
+      ?q=...                 ricerca su azienda / referente / email
+      ?fase=Nuovo            filtro fase pipeline
+      ?stato=Attiva          filtro stato lead
+      ?owner=...             filtro PM assegnato
+      ?alert=1               solo lead con follow-up scaduto
+      ?sort=key&dir=asc|desc ordinamento server-side
+      ?page=N                paginazione
+    """
+    search_query = request.GET.get("q", "").strip()
+    fase_filter = request.GET.get("fase", "").strip()
+    stato_filter = request.GET.get("stato", "").strip()
+    owner_filter = request.GET.get("owner", "").strip()
+    alert_only = request.GET.get("alert", "") == "1"
+
+    queryset = Lead.objects.all()
+
+    if search_query:
+        queryset = queryset.filter(
+            Q(azienda__icontains=search_query)
+            | Q(referente__icontains=search_query)
+            | Q(nome_referente__icontains=search_query)
+            | Q(cognome_referente__icontains=search_query)
+            | Q(email_referente__icontains=search_query)
+            | Q(lead_id__icontains=search_query)
+        )
+
+    if fase_filter:
+        queryset = queryset.filter(fase_attuale__iexact=fase_filter)
+    if stato_filter:
+        queryset = queryset.filter(stato_lead__iexact=stato_filter)
+    if owner_filter:
+        queryset = queryset.filter(owner__icontains=owner_filter)
+    if alert_only:
+        queryset = queryset.filter(alert_follow_up=True)
+
+    # Sort server-side cross-page
+    sort_key, sort_dir = _read_sort_params(request, LEADS_SORT_MAP, LEADS_SORT_DEFAULT)
+    all_records = list(queryset)
+    all_records, sort_key, sort_dir = _sort_records(
+        all_records, sort_key, sort_dir, LEADS_SORT_MAP, LEADS_SORT_DEFAULT
+    )
+
+    # KPI rapidi sopra la tabella (sull'intero dataset filtrato, non sulla pagina)
+    kpi = {
+        "total": len(all_records),
+        "attive": sum(1 for l in all_records if (l.stato_lead or "").lower() == "attiva"),
+        "vinte": sum(1 for l in all_records if (l.stato_lead or "").lower() == "vinta"),
+        "alert": sum(1 for l in all_records if l.alert_follow_up),
+        "valore_ponderato_tot": sum(
+            (l.valore_ponderato or 0) for l in all_records
+        ),
+    }
+
+    paginator = Paginator(all_records, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "dashboard/leads.html", {
+        "leads": page_obj,
+        "page_obj": page_obj,
+        "search_query": search_query,
+        "fase_filter": fase_filter,
+        "stato_filter": stato_filter,
+        "owner_filter": owner_filter,
+        "alert_only": alert_only,
+        "current_sort": sort_key,
+        "current_dir": sort_dir,
+        "kpi": kpi,
+        "fasi": ch.LEAD_FASE_VALUES,
+        "stati": ch.LEAD_STATO_VALUES,
+        "is_editor": is_editor(request.user),
+    })
 
 # Sort map per Partnership (tab "partnership")
 PARTNERSHIP_SORT_MAP = {
