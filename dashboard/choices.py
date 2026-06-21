@@ -141,6 +141,47 @@ BOOL_SI_NO_CHOICES = [
 
 
 # ============================================================
+# LEADS (BD Lead Control)
+# ============================================================
+
+LEAD_FASE_VALUES = [
+    'Nuovo',
+    'Qualificato',
+    'Proposta inviata',
+    'Negoziazione',
+    'Vinta',
+    'Persa',
+]
+LEAD_FASE_CHOICES = _build(LEAD_FASE_VALUES)
+
+LEAD_STATO_VALUES = [
+    'Attiva',
+    'In pausa',
+    'Vinta',
+    'Persa',
+    'Archiviata',
+]
+LEAD_STATO_CHOICES = _build(LEAD_STATO_VALUES)
+
+LEAD_CONTRATTO_VALUES = [
+    'Da preparare',
+    'Bozza',
+    'In revisione',
+    'Firmato',
+    'Rifiutato',
+    'Annullato',
+]
+LEAD_CONTRATTO_CHOICES = _build(LEAD_CONTRATTO_VALUES)
+
+LEAD_PRIORITA_VALUES = [
+    'Alta',
+    'Media',
+    'Bassa',
+]
+LEAD_PRIORITA_CHOICES = _build(LEAD_PRIORITA_VALUES)
+
+
+# ============================================================
 # UTIL
 # ============================================================
 

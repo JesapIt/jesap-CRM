@@ -1,82 +1,323 @@
 {% extends "dashboard/base_figma.html" %}
+{% load static %}
 
 {% block title %}JESAP Gestionale - Leads{% endblock %}
 
 {% block content %}
   <style>
-    .lead-row { transition: background-color 0.2s ease; cursor: pointer; }
-    .lead-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+    /* UI rows */
+    .leads-row { transition: background-color 0.2s ease; cursor: pointer; }
+    .leads-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+    .leads-row.expanded { background-color: rgba(0, 0, 0, 0.02); }
+    .leads-details-row { display: none; }
+    .leads-row.expanded + .leads-details-row { display: table-row; }
+    .leads-details-wrap {
+      overflow: hidden; max-height: 0; opacity: 0; transform: translateY(-4px);
+      transition: max-height 260ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 180ms ease, transform 180ms ease;
+      will-change: max-height, opacity, transform;
+    }
+    .leads-row.expanded + .leads-details-row .leads-details-wrap { opacity: 1; transform: translateY(0); }
 
+    /* Sort */
     .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
     .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+
+    /* KPI cards */
+    .kpi-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
+    .kpi-card {
+      flex: 1 1 160px; background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+      padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .kpi-card .kpi-label { font-size: 12px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: #0F172A; margin-top: 4px; }
+    .kpi-card.alert { border-color: #FCA5A5; background: #FEF2F2; }
+    .kpi-card.alert .kpi-value { color: #B91C1C; }
+    .kpi-card.win { border-color: #86EFAC; background: #F0FDF4; }
+    .kpi-card.win .kpi-value { color: #15803D; }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; line-height: 1.5; }
+    .badge-fase-Nuovo { background: #DBEAFE; color: #1D4ED8; }
+    .badge-fase-Qualificato { background: #E0E7FF; color: #4338CA; }
+    .badge-fase-Propostainviata { background: #FEF3C7; color: #B45309; }
+    .badge-fase-Negoziazione { background: #FED7AA; color: #C2410C; }
+    .badge-fase-Vinta { background: #DCFCE7; color: #15803D; }
+    .badge-fase-Persa { background: #FEE2E2; color: #B91C1C; }
+
+    .badge-stato-Attiva { background: #DCFCE7; color: #15803D; }
+    .badge-stato-Vinta { background: #DCFCE7; color: #15803D; font-weight: 700; }
+    .badge-stato-Persa { background: #FEE2E2; color: #B91C1C; }
+    .badge-stato-Inpausa { background: #F3F4F6; color: #6B7280; }
+    .badge-stato-Archiviata { background: #F3F4F6; color: #6B7280; }
+
+    .badge-priorita-Alta { background: #FEE2E2; color: #B91C1C; }
+    .badge-priorita-Media { background: #FEF3C7; color: #B45309; }
+    .badge-priorita-Bassa { background: #E0F2FE; color: #0369A1; }
+
+    .alert-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #DC2626; margin-right: 6px; }
+
+    /* Table */
+    .leads-table { width: 100%; border-collapse: collapse; }
+    .leads-table th, .leads-table td { padding: 12px 14px; text-align: left; vertical-align: middle; }
+    .leads-table thead th { font-size: 12px; text-transform: uppercase; color: #64748B; letter-spacing: 0.04em; background: #F8FAFC; border-bottom: 1px solid #E5E7EB; }
+    .leads-table tbody tr { border-bottom: 1px solid #F1F5F9; }
+    .leads-table td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
   </style>
 
-  <section class="page">
-    <header class="page__header">
-      <h1 class="page__title">LEADS</h1>
-    </header>
+  <section class="page-section" style="padding: 24px;">
 
-    <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 12px; margin-bottom: 18px;">
+      <div>
+        <h1 style="margin:0; font-size: 24px;">BD Leads</h1>
+        <p style="margin:4px 0 0; color:#64748B; font-size: 14px;">Pipeline business development sincronizzata con Google Sheet</p>
+      </div>
+      <div style="display:flex; gap: 8px;">
+        <a href="https://docs.google.com/spreadsheets/d/1jqMgYV6FqMIFCHPbcJLvJV3oMOcQ9v44M2Vvuf5qh5w/edit"
+           target="_blank" rel="noopener"
+           style="background:#fff;border:1px solid #E5E7EB;color:#0F172A;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+           Apri Sheet ↗
+        </a>
+      </div>
+    </div>
 
-      <form class="search-form" method="get" action="" role="search" style="display: flex; gap: 12px; align-items: center;">
-        <label class="search" for="lead-search-q">
-          <input id="lead-search-q" class="search__input" type="search" name="q" value="{% if search_query %}{{ search_query }}{% endif %}" placeholder="Cerca lead..." autocomplete="off" />
-          <button type="submit" class="search__icon search__submit">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg>
-          </button>
-        </label>
+    <!-- KPI -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Totali</div>
+        <div class="kpi-value">{{ kpi.total }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Attive</div>
+        <div class="kpi-value">{{ kpi.attive }}</div>
+      </div>
+      <div class="kpi-card win">
+        <div class="kpi-label">Vinte</div>
+        <div class="kpi-value">{{ kpi.vinte }}</div>
+      </div>
+      <div class="kpi-card alert">
+        <div class="kpi-label">Follow-up scaduti</div>
+        <div class="kpi-value">{{ kpi.alert }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pipeline ponderata</div>
+        <div class="kpi-value">€ {{ kpi.valore_ponderato_tot|floatformat:0 }}</div>
+      </div>
+    </div>
 
-        <select id="lead-stato" class="search__input" name="stato" style="max-width: 200px;">
-          <option value="">Tutti gli stati</option>
-        </select>
+    <!-- Filtri / search -->
+    <form method="get" action="" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 12px;">
+      <input type="search" name="q" value="{{ search_query }}" placeholder="Cerca azienda, referente, email, lead ID..."
+             style="flex:1 1 260px; padding: 8px 12px; border:1px solid #E5E7EB; border-radius:8px; font-size:14px;">
 
-        <button type="submit" class="sort__button"><span>Applica</span></button>
-      </form>
+      <select name="fase" style="padding:8px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px;">
+        <option value="">Tutte le fasi</option>
+        {% for f in fasi %}
+          <option value="{{ f }}" {% if f == fase_filter %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
 
+      <select name="stato" style="padding:8px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px;">
+        <option value="">Tutti gli stati</option>
+        {% for s in stati %}
+          <option value="{{ s }}" {% if s == stato_filter %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+
+      <input type="text" name="owner" value="{{ owner_filter }}" placeholder="Owner..."
+             style="padding:8px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:14px; width:140px;">
+
+      <label style="display:flex; align-items:center; gap:6px; font-size:14px; color:#334155; padding: 0 8px;">
+        <input type="checkbox" name="alert" value="1" {% if alert_only %}checked{% endif %}>
+        Solo follow-up scaduti
+      </label>
+
+      <button type="submit" class="sort__button" style="padding:8px 18px;">Applica</button>
+      {% if search_query or fase_filter or stato_filter or owner_filter or alert_only %}
+        <a href="?" class="sort__button" style="padding:8px 18px;text-decoration:none;background:#fff;border:1px solid #E5E7EB;">Reset</a>
+      {% endif %}
+    </form>
+
+    <!-- Sort dropdown -->
+    <div style="display:flex; justify-content:flex-end; margin-bottom: 8px;">
       <div class="top-sort-controls">
-        <span class="sort__label">Ordina per:</span>
-        <select id="top-sort-select" class="top-sort-select">
-          <option value="nome">Nome</option>
-          <option value="stato">Stato</option>
-          <option value="data">Data</option>
+        <span class="sort__label" style="font-size:13px;color:#64748B;">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select" data-current-dir="{{ current_dir|default:'desc' }}">
+          <option value="data_creazione" {% if current_sort == 'data_creazione' %}selected{% endif %}>Data creazione</option>
+          <option value="azienda" {% if current_sort == 'azienda' %}selected{% endif %}>Azienda</option>
+          <option value="fase" {% if current_sort == 'fase' %}selected{% endif %}>Fase</option>
+          <option value="stato" {% if current_sort == 'stato' %}selected{% endif %}>Stato</option>
+          <option value="priorita" {% if current_sort == 'priorita' %}selected{% endif %}>Priorità</option>
+          <option value="valore_stimato" {% if current_sort == 'valore_stimato' %}selected{% endif %}>Valore stimato</option>
+          <option value="valore_ponderato" {% if current_sort == 'valore_ponderato' %}selected{% endif %}>Valore ponderato</option>
+          <option value="probabilita" {% if current_sort == 'probabilita' %}selected{% endif %}>Probabilità</option>
+          <option value="data_prossima_azione" {% if current_sort == 'data_prossima_azione' %}selected{% endif %}>Prossima azione</option>
+          <option value="owner" {% if current_sort == 'owner' %}selected{% endif %}>Owner</option>
         </select>
-        <button id="top-sort-dir" class="icon-button" type="button" style="transition: transform 0.2s;">
+        <button id="top-sort-dir" class="icon-button" type="button"
+                style="transition: transform 0.2s; transform: {% if current_dir == 'desc' %}rotate(180deg){% else %}rotate(0deg){% endif %};"
+                title="Inverti direzione">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
         </button>
       </div>
     </div>
 
-    <div class="table-card">
-      <table class="table" id="leads-table">
+    <!-- Tabella -->
+    <div class="table-card" style="background:#fff; border:1px solid #E5E7EB; border-radius:12px; overflow:auto;">
+      <table class="leads-table">
         <thead>
           <tr>
-            <th>Nome cliente</th>
-            <th>Stato Lead</th>
-            <th>Verbali</th>
-            <th>Data Completamento</th>
+            <th>Azienda</th>
+            <th>Referente</th>
+            <th>Owner</th>
+            <th>Fase</th>
+            <th>Stato</th>
+            <th>Priorità</th>
+            <th class="numeric">Valore stim.</th>
+            <th class="numeric">Prob.</th>
+            <th class="numeric">Ponderato</th>
+            <th>Prossima azione</th>
           </tr>
         </thead>
         <tbody id="table-body">
-          <tr>
-            <td colspan="4" style="text-align: center; padding: 40px; color: #64748B;">
-              Nessun lead presente. La sezione è in fase di sviluppo.
+        {% for l in leads %}
+          <tr class="leads-row" data-row-id="lead-{{ forloop.counter }}">
+            <td>
+              {% if l.alert_follow_up %}<span class="alert-dot" title="Follow-up scaduto"></span>{% endif %}
+              <strong>{{ l.azienda|default:"-" }}</strong>
+              <div style="font-size:11px;color:#94A3B8;">{{ l.lead_id }}</div>
+            </td>
+            <td>
+              {{ l.referente_full|default:"-" }}
+              {% if l.email_referente %}
+                <div style="font-size:11px;color:#64748B;"><a href="mailto:{{ l.email_referente }}" style="color:inherit;">{{ l.email_referente }}</a></div>
+              {% endif %}
+            </td>
+            <td>{{ l.owner|default:"-" }}</td>
+            <td>
+              {% if l.fase_attuale %}
+                <span class="badge badge-fase-{{ l.fase_attuale|cut:' ' }}">{{ l.fase_attuale }}</span>
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if l.stato_lead %}
+                <span class="badge badge-stato-{{ l.stato_lead|cut:' ' }}">{{ l.stato_lead }}</span>
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if l.priorita %}
+                <span class="badge badge-priorita-{{ l.priorita }}">{{ l.priorita }}</span>
+              {% else %}-{% endif %}
+            </td>
+            <td class="numeric">{% if l.valore_stimato %}€ {{ l.valore_stimato|floatformat:0 }}{% else %}-{% endif %}</td>
+            <td class="numeric">{% if l.probabilita is not None %}{{ l.probabilita }}%{% else %}-{% endif %}</td>
+            <td class="numeric"><strong>{% if l.valore_ponderato %}€ {{ l.valore_ponderato|floatformat:0 }}{% else %}-{% endif %}</strong></td>
+            <td>
+              {{ l.prossima_azione|default:"-" }}
+              {% if l.data_prossima_azione %}
+                <div style="font-size:11px;color:{% if l.alert_follow_up %}#DC2626{% else %}#64748B{% endif %};">
+                  {{ l.data_prossima_azione|date:"d/m/Y" }}
+                </div>
+              {% endif %}
             </td>
           </tr>
+          <tr class="leads-details-row" id="lead-{{ forloop.counter }}">
+            <td colspan="10">
+              <div class="leads-details-wrap" style="padding: 16px 20px;">
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 24px;">
+                  <div><strong>Prodotto / Servizio:</strong> {{ l.prodotto_servizio|default:"-" }}</div>
+                  <div><strong>Area:</strong> {{ l.area|default:"-" }}</div>
+                  <div><strong>Stato contratto:</strong> {{ l.stato_contratto|default:"-" }}</div>
+                  <div><strong>Telefono:</strong> {{ l.telefono|default:"-" }}</div>
+                  <div><strong>Titolare azienda:</strong> {{ l.titolare_azienda|default:"-" }}</div>
+                  <div><strong>Data primo contatto:</strong> {% if l.data_primo_contatto %}{{ l.data_primo_contatto|date:"d/m/Y" }}{% else %}-{% endif %}</div>
+                  <div><strong>Data creazione:</strong> {% if l.data_creazione %}{{ l.data_creazione|date:"d/m/Y" }}{% else %}-{% endif %}</div>
+                  {% if l.link_cartella_drive %}
+                    <div><strong>Drive:</strong> <a href="{{ l.link_cartella_drive }}" target="_blank" rel="noopener">Apri cartella ↗</a></div>
+                  {% endif %}
+                </div>
+                {% if l.storico_aggiornamenti %}
+                  <div style="margin-top: 16px;">
+                    <strong style="font-size:13px;color:#475569;">Storico aggiornamenti</strong>
+                    <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: #64748B;">
+                      {% for evt in l.storico_aggiornamenti %}
+                        <li>
+                          <code style="font-size:11px;">{{ evt.ts|default:"-" }}</code>:
+                          {% if evt.fase_da and evt.fase_a and evt.fase_da != evt.fase_a %}
+                            fase <em>{{ evt.fase_da }}</em> → <em>{{ evt.fase_a }}</em>
+                          {% endif %}
+                          {% if evt.stato_da and evt.stato_a and evt.stato_da != evt.stato_a %}
+                            · stato <em>{{ evt.stato_da }}</em> → <em>{{ evt.stato_a }}</em>
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="10" style="text-align:center; padding: 40px; color: #94A3B8;">
+            Nessuna lead trovata.
+            {% if search_query or fase_filter or stato_filter or owner_filter or alert_only %}
+              <br><a href="?">Reset filtri</a>
+            {% endif %}
+          </td></tr>
+        {% endfor %}
         </tbody>
       </table>
     </div>
+
+    <!-- Paginazione -->
+    {% if page_obj.has_other_pages %}
+      <nav style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:16px;">
+        {% if page_obj.has_previous %}
+          <a href="?q={{ search_query|urlencode }}&fase={{ fase_filter|urlencode }}&stato={{ stato_filter|urlencode }}&owner={{ owner_filter|urlencode }}{% if alert_only %}&alert=1{% endif %}&sort={{ current_sort|default:'data_creazione' }}&dir={{ current_dir|default:'desc' }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+        {% endif %}
+        <span style="font-size:14px;color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?q={{ search_query|urlencode }}&fase={{ fase_filter|urlencode }}&stato={{ stato_filter|urlencode }}&owner={{ owner_filter|urlencode }}{% if alert_only %}&alert=1{% endif %}&sort={{ current_sort|default:'data_creazione' }}&dir={{ current_dir|default:'desc' }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+        {% endif %}
+      </nav>
+    {% endif %}
   </section>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      var topSelect = document.getElementById("top-sort-select");
-      var topDirBtn = document.getElementById("top-sort-dir");
-      var currentDir = "asc";
+      const tbody = document.getElementById("table-body");
+      if (!tbody) return;
 
-      if (topDirBtn) {
+      // Toggle dettagli row
+      tbody.querySelectorAll(".leads-row").forEach(function (row) {
+        row.addEventListener("click", function () {
+          const targetId = row.dataset.rowId;
+          const detail = document.getElementById(targetId);
+          const wrap = detail && detail.querySelector(".leads-details-wrap");
+          const isOpen = row.classList.toggle("expanded");
+          if (wrap) wrap.style.maxHeight = isOpen ? wrap.scrollHeight + "px" : "0px";
+        });
+      });
+
+      // Sort → URL params (server-side cross-page)
+      const topSelect = document.getElementById("top-sort-select");
+      const topDirBtn = document.getElementById("top-sort-dir");
+      function navigateWithSort(sortKey, dir) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("sort", sortKey);
+        params.set("dir", dir);
+        params.delete("page");
+        window.location.search = params.toString();
+      }
+      if (topSelect && topDirBtn) {
+        topSelect.addEventListener("change", function (e) {
+          const dir = topSelect.dataset.currentDir || "desc";
+          navigateWithSort(e.target.value, dir);
+        });
         topDirBtn.addEventListener("click", function () {
-          currentDir = currentDir === "asc" ? "desc" : "asc";
-          topDirBtn.style.transform = currentDir === "asc" ? "rotate(0deg)" : "rotate(180deg)";
+          const cur = topSelect.dataset.currentDir || "desc";
+          const next = cur === "asc" ? "desc" : "asc";
+          navigateWithSort(topSelect.value, next);
         });
       }
     });
