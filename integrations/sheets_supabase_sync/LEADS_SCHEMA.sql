@@ -5,10 +5,12 @@
 --
 -- Naming convention: UPPERCASE come EVENTI, FORMAZIONI, PROGETTI, SOCI, PARTNERSHIP.
 -- Eseguire una sola volta su Supabase SQL Editor.
+--
+-- NOTA: usiamo trigger plpgsql custom invece di GENERATED ALWAYS / moddatetime
+-- extension per:
+--   - massima portabilità (no extension richiesta)
+--   - alert_follow_up usa CURRENT_DATE (STABLE, non IMMUTABLE) → no GENERATED
 -- ============================================================
-
--- Extension richiesta per il trigger updated_at automatico
-CREATE EXTENSION IF NOT EXISTS moddatetime;
 
 -- ============================================================
 -- TABELLA principale
@@ -17,7 +19,7 @@ CREATE TABLE IF NOT EXISTS "LEADS" (
   -- PK generata da Apps Script: "LEAD-YYYYMMDD-HHMMSS-N"
   lead_id              text PRIMARY KEY,
 
-  -- Timestamps business
+  -- Timestamps business (ISO date — Apps Script DEVE mandare YYYY-MM-DD)
   data_creazione       date NOT NULL DEFAULT CURRENT_DATE,
   data_primo_contatto  date,
 
@@ -44,10 +46,10 @@ CREATE TABLE IF NOT EXISTS "LEADS" (
   priorita             text,           -- Alta / Media / Bassa
 
   -- Forecasting
-  valore_stimato       numeric(12,2),  -- € senza simbolo (es. 23.00)
+  valore_stimato       numeric(12,2),  -- € senza simbolo
   probabilita          smallint CHECK (probabilita IS NULL OR probabilita BETWEEN 0 AND 100),
 
-  -- Calcolato AUTOMATICAMENTE: valore_stimato × probabilita / 100
+  -- Calcolato AUTOMATICAMENTE via GENERATED (operazioni IMMUTABLE)
   valore_ponderato     numeric(12,2)
     GENERATED ALWAYS AS (
       CASE
@@ -61,13 +63,9 @@ CREATE TABLE IF NOT EXISTS "LEADS" (
   prossima_azione      text,
   data_prossima_azione date,
 
-  -- Alert automatico: true se data_prossima_azione scaduta E lead ancora attiva
-  alert_follow_up      boolean
-    GENERATED ALWAYS AS (
-      data_prossima_azione IS NOT NULL
-      AND data_prossima_azione < CURRENT_DATE
-      AND stato_lead = 'Attiva'
-    ) STORED,
+  -- Alert: aggiornato via TRIGGER (NON GENERATED perché CURRENT_DATE è STABLE).
+  -- Richiede refresh giornaliero o ricalcolo on-read se data passa.
+  alert_follow_up      boolean DEFAULT FALSE,
 
   -- Google Drive
   drive_folder_id      text,
@@ -92,19 +90,57 @@ CREATE INDEX IF NOT EXISTS idx_leads_priorita ON "LEADS"(priorita);
 CREATE INDEX IF NOT EXISTS idx_leads_alert    ON "LEADS"(alert_follow_up) WHERE alert_follow_up = TRUE;
 CREATE INDEX IF NOT EXISTS idx_leads_valore   ON "LEADS"(valore_ponderato DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_leads_prossima ON "LEADS"(data_prossima_azione);
-CREATE INDEX IF NOT EXISTS idx_leads_azienda  ON "LEADS" USING gin (to_tsvector('italian', azienda));
+-- Full-text con config 'simple' (sempre disponibile, no lingua specifica)
+CREATE INDEX IF NOT EXISTS idx_leads_azienda  ON "LEADS" USING gin (to_tsvector('simple', azienda));
 
 -- ============================================================
--- TRIGGER 1: aggiorna ultimo_aggiornamento ad ogni UPDATE
+-- TRIGGER 1: aggiorna ultimo_aggiornamento + alert_follow_up
+-- (custom plpgsql, no moddatetime extension richiesta)
 -- ============================================================
+CREATE OR REPLACE FUNCTION leads_before_update() RETURNS trigger AS $$
+BEGIN
+  -- Updated_at
+  NEW.ultimo_aggiornamento := now();
+
+  -- Alert follow-up (ricalcolato a ogni update)
+  NEW.alert_follow_up := (
+    NEW.data_prossima_azione IS NOT NULL
+    AND NEW.data_prossima_azione < CURRENT_DATE
+    AND NEW.stato_lead = 'Attiva'
+  );
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS leads_set_updated ON "LEADS";
 CREATE TRIGGER leads_set_updated
   BEFORE UPDATE ON "LEADS"
   FOR EACH ROW
-  EXECUTE FUNCTION moddatetime(ultimo_aggiornamento);
+  EXECUTE FUNCTION leads_before_update();
 
 -- ============================================================
--- TRIGGER 2: append a storico_aggiornamenti su cambio fase/stato/owner
+-- TRIGGER 2: calcola alert_follow_up anche su INSERT
+-- ============================================================
+CREATE OR REPLACE FUNCTION leads_before_insert() RETURNS trigger AS $$
+BEGIN
+  NEW.alert_follow_up := (
+    NEW.data_prossima_azione IS NOT NULL
+    AND NEW.data_prossima_azione < CURRENT_DATE
+    AND NEW.stato_lead = 'Attiva'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS leads_set_alert_insert ON "LEADS";
+CREATE TRIGGER leads_set_alert_insert
+  BEFORE INSERT ON "LEADS"
+  FOR EACH ROW
+  EXECUTE FUNCTION leads_before_insert();
+
+-- ============================================================
+-- TRIGGER 3: append a storico_aggiornamenti su cambio fase/stato/owner
 -- ============================================================
 CREATE OR REPLACE FUNCTION log_lead_change() RETURNS trigger AS $$
 BEGIN
@@ -115,10 +151,14 @@ BEGIN
     NEW.storico_aggiornamenti := COALESCE(OLD.storico_aggiornamenti, '[]'::jsonb)
       || jsonb_build_array(jsonb_build_object(
         'ts',           now(),
-        'fase_da',      OLD.fase_attuale,    'fase_a',      NEW.fase_attuale,
-        'stato_da',     OLD.stato_lead,      'stato_a',     NEW.stato_lead,
-        'contratto_da', OLD.stato_contratto, 'contratto_a', NEW.stato_contratto,
-        'owner_da',     OLD.owner,           'owner_a',     NEW.owner
+        'fase_da',      COALESCE(OLD.fase_attuale, ''),
+        'fase_a',       COALESCE(NEW.fase_attuale, ''),
+        'stato_da',     COALESCE(OLD.stato_lead, ''),
+        'stato_a',      COALESCE(NEW.stato_lead, ''),
+        'contratto_da', COALESCE(OLD.stato_contratto, ''),
+        'contratto_a',  COALESCE(NEW.stato_contratto, ''),
+        'owner_da',     COALESCE(OLD.owner, ''),
+        'owner_a',      COALESCE(NEW.owner, '')
       ));
   END IF;
   RETURN NEW;
@@ -132,13 +172,41 @@ CREATE TRIGGER leads_audit_log
   EXECUTE FUNCTION log_lead_change();
 
 -- ============================================================
--- ROW LEVEL SECURITY (RLS) — disabilitata: l'accesso passa
--- sempre dal pooler con service role key dal backend Django.
+-- FUNZIONE batch: ricalcola alert_follow_up su tutti i record
+-- Chiamare da cron Supabase giornaliero a mezzanotte (Edge Function o pg_cron)
+-- per gestire date che scadono SENZA che la row venga aggiornata.
+-- ============================================================
+CREATE OR REPLACE FUNCTION refresh_all_leads_alerts() RETURNS integer AS $$
+DECLARE
+  updated_count integer;
+BEGIN
+  UPDATE "LEADS"
+  SET alert_follow_up = (
+    data_prossima_azione IS NOT NULL
+    AND data_prossima_azione < CURRENT_DATE
+    AND stato_lead = 'Attiva'
+  )
+  WHERE alert_follow_up IS DISTINCT FROM (
+    data_prossima_azione IS NOT NULL
+    AND data_prossima_azione < CURRENT_DATE
+    AND stato_lead = 'Attiva'
+  );
+  GET DIAGNOSTICS updated_count = ROW_COUNT;
+  RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Esempio di schedulazione con pg_cron (se attivato su Supabase):
+-- SELECT cron.schedule('refresh-leads-alerts', '0 0 * * *', 'SELECT refresh_all_leads_alerts();');
+
+-- ============================================================
+-- ROW LEVEL SECURITY (RLS) — disabilitata: accesso via backend
+-- Django con service_role key, mai dal client direttamente.
 -- ============================================================
 ALTER TABLE "LEADS" DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================
--- DATI DI TEST (opzionale, da rimuovere in prod dopo verifica)
+-- DATI DI TEST (rimuovere in prod dopo verifica)
 -- ============================================================
 INSERT INTO "LEADS" (
   lead_id, data_primo_contatto, azienda, referente, nome_referente, cognome_referente,
@@ -159,6 +227,8 @@ ON CONFLICT (lead_id) DO NOTHING;
 
 -- ============================================================
 -- VERIFICA: dovrebbe ritornare 3 righe + valore_ponderato calcolato
+-- e alert_follow_up popolato dai trigger
 -- ============================================================
--- SELECT lead_id, azienda, fase_attuale, valore_stimato, probabilita, valore_ponderato, alert_follow_up
+-- SELECT lead_id, azienda, fase_attuale, valore_stimato, probabilita,
+--        valore_ponderato, alert_follow_up, data_prossima_azione
 -- FROM "LEADS" ORDER BY data_creazione DESC;

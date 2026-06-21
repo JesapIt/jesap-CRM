@@ -470,29 +470,33 @@ class Lead(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True
     )
     probabilita = models.SmallIntegerField(null=True, blank=True)
+    # GENERATED ALWAYS in DB: Django ORM non deve mai scrivere
     valore_ponderato = models.DecimalField(
-        max_digits=12, decimal_places=2, null=True, blank=True
-    )  # GENERATED ALWAYS — Django read-only
+        max_digits=12, decimal_places=2, null=True, blank=True, editable=False,
+    )
 
     # Prossimo step
     prossima_azione = models.TextField(blank=True, null=True)
     data_prossima_azione = models.DateField(null=True, blank=True)
-    alert_follow_up = models.BooleanField(null=True, blank=True)  # GENERATED ALWAYS
+    # Aggiornato da TRIGGER plpgsql (su INSERT/UPDATE) + cron giornaliero:
+    # Django ORM non deve mai scrivere
+    alert_follow_up = models.BooleanField(null=True, blank=True, editable=False)
 
     # Drive
     drive_folder_id = models.TextField(blank=True, null=True)
     link_cartella_drive = models.TextField(blank=True, null=True)
     cartella_fase_drive = models.TextField(blank=True, null=True)
 
-    # Audit
-    storico_aggiornamenti = models.JSONField(default=list, blank=True)
-    ultimo_aggiornamento = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(null=True, blank=True)
+    # Audit — tutti gestiti da trigger SQL, Django ORM read-only
+    storico_aggiornamenti = models.JSONField(default=list, blank=True, editable=False)
+    ultimo_aggiornamento = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     class Meta:
         managed = False
         db_table = 'LEADS'
-        ordering = ['-data_creazione', '-lead_id']
+        # NB: niente `ordering` qui — l'ordinamento è gestito 100% dalla view
+        # tramite _read_sort_params + _sort_records (sort server-side cross-page).
 
     def __str__(self):
         return f"{self.lead_id} — {self.azienda or '(no azienda)'}"
