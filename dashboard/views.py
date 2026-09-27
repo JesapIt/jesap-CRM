@@ -1,42 +1,42 @@
-﻿from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import reverse
-from django.http import JsonResponse
-from django.db import connection
-from django.views.decorators.http import require_GET
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate, login
+import logging
+import re as _re
+from functools import wraps
+
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.views import PasswordResetConfirmView as DjangoPasswordResetConfirmView
+from django.contrib.auth.views import PasswordResetView as DjangoPasswordResetView
+from django.core import signing
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.mail import EmailMultiAlternatives
 from django.core.paginator import Paginator
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
-from urllib.parse import urlencode
-from .models import Partnership
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
+
+from . import choices as ch
 from .forms import (
-    PartnershipForm,
-    PartnershipFullForm,
+    LeadForm,
     LeadPartnershipForm,
     NonFinalizzataForm,
+    PartnershipFullForm,
     ProgettoForm,
-    LeadForm,
 )
-from . import choices as ch
-
-# These are for generating secure email links
-from django.core.mail import send_mail, EmailMultiAlternatives
-from django.template.loader import render_to_string
-from django.core import signing
-from .models import Eventi, Formazioni, Progetti, Soci, Socio, Partnership, Lead
-from django.conf import settings# Adicione este import lá no topo junto com os outros
-from django.contrib.auth.decorators import user_passes_test
-
-# --- IMPORTS per password reset custom views ---
-from django.contrib.auth.views import PasswordResetView as DjangoPasswordResetView
-from django.contrib.auth.views import PasswordResetConfirmView as DjangoPasswordResetConfirmView
-from django.contrib.auth.forms import SetPasswordForm
-from django.http import HttpResponseRedirect
-import logging
+from .models import Lead, Partnership, Progetti, Soci, Socio
+from .utils.parsing import parse_date_text, parse_money
 
 logger = logging.getLogger(__name__)
+
+# Valori "vuoti" letterali arrivati dal sync Sheets → Supabase
+_EMPTY_TEXT_VALUES = ('', 'None', 'null')
+
 
 # RBAC: Editor = gruppo 'Editori' | staff admin | superuser
 def is_editor(user):
@@ -46,6 +46,31 @@ def is_editor(user):
     )
 
 
+def _is_admin_user(u):
+    return u.is_authenticated and (u.is_staff or u.is_superuser)
+
+
+def _role_required(check):
+    """Anonimo → login; loggato senza permesso → 403 (non un redirect silenzioso)."""
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped(request, *args, **kwargs):
+            if not check(request.user):
+                raise PermissionDenied
+            return view_func(request, *args, **kwargs)
+        return login_required(_wrapped, login_url='login')
+    return decorator
+
+
+editor_required = _role_required(is_editor)
+admin_required = _role_required(_is_admin_user)
+
+
+def _named(field):
+    """Esclude righe senza nome (NULL / '' / 'None' letterale dal sync)."""
+    return Q(**{f'{field}__isnull': False}) & ~Q(**{f'{field}__in': _EMPTY_TEXT_VALUES})
+
+
 # ============================================================
 # SORTING HELPERS — sort server-side cross-page
 # Le date in DB sono salvate come stringhe (DD/MM/YYYY o YYYY-MM-DD).
@@ -53,60 +78,46 @@ def is_editor(user):
 # Soluzione: load full queryset → sort in Python con parser type-aware → paginate.
 # ============================================================
 
-import re as _re
-from functools import cmp_to_key as _cmp_to_key
+SORT_TEXT = 'text'   # ordinamento alfabetico puro (nomi, stati, ...)
+SORT_AUTO = 'auto'   # data → numero/importo → testo
 
-_DATE_DMY = _re.compile(r'^(\d{1,2})/(\d{1,2})/(\d{4})$')
-_DATE_ISO = _re.compile(r'^(\d{4})-(\d{1,2})-(\d{1,2})$')
-_DATE_DMY_DASH = _re.compile(r'^(\d{1,2})-(\d{1,2})-(\d{4})$')
+_DATE_LIKE = _re.compile(r'^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$')
 
 
-def _make_sort_key(value):
+def _make_sort_key(value, kind=SORT_AUTO):
     """
-    Converte un valore (qualsiasi tipo) in una chiave sortabile.
-    Gestisce date DD/MM/YYYY, ISO YYYY-MM-DD, numeri/currency, percentuali, testo.
-    Ritorna `None` per valori vuoti (sinkati in fondo dal comparator).
+    Converte un valore in una chiave sortabile `(rank, valore)`.
+    Il rank separa date / numeri / testo → ordine totale anche su colonne miste.
+    Ritorna `None` per valori vuoti (sinkati in fondo).
     """
     if value is None:
         return None
     s = str(value).strip()
-    if not s or s in ("-", "None", "N/A"):
+    if not s or s in ("-", "None", "null", "N/A"):
         return None
+    if kind == SORT_TEXT:
+        return (2, s.lower())
 
-    # Date DD/MM/YYYY → ISO sortable
-    m = _DATE_DMY.match(s)
-    if m:
-        return f"{m.group(3)}{m.group(2).zfill(2)}{m.group(1).zfill(2)}"
-    # Date YYYY-MM-DD
-    m = _DATE_ISO.match(s)
-    if m:
-        return f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}"
-    # Date DD-MM-YYYY
-    m = _DATE_DMY_DASH.match(s)
-    if m:
-        return f"{m.group(3)}{m.group(2).zfill(2)}{m.group(1).zfill(2)}"
+    if _DATE_LIKE.match(s):
+        parsed = parse_date_text(s)
+        if parsed:
+            return (0, parsed.isoformat())
 
-    # Number/currency/percent: estrai cifre
-    cleaned = _re.sub(r'[^0-9.,-]+', '', s)
-    if cleaned and _re.search(r'\d', cleaned):
+    if _re.search(r'\d', s):
         try:
-            # IT format: 1.234,56 → 1234.56
-            if ',' in cleaned and '.' in cleaned:
-                cleaned = cleaned.replace('.', '').replace(',', '.')
-            elif ',' in cleaned:
-                cleaned = cleaned.replace(',', '.')
-            return float(cleaned)
+            amount = parse_money(s)
         except ValueError:
-            pass
+            amount = None
+        if amount is not None:
+            return (1, amount)
 
-    # Text fallback
-    return s.lower()
+    return (2, s.lower())
 
 
 def _sort_records(records, sort_key, sort_dir, sort_map, default_sort):
     """
     Ordina lista records in Python.
-    sort_map: dict {sort_key: callable_or_attrname}
+    sort_map: {sort_key: attrname | callable | (attrname|callable, SORT_TEXT|SORT_AUTO)}
     default_sort: tuple (key, dir) usato se sort_key non valido
     Empty values sinkano sempre in fondo (asc + desc).
     Ritorna (records_sorted, sort_key_effettivo, sort_dir_effettivo).
@@ -117,42 +128,23 @@ def _sort_records(records, sort_key, sort_dir, sort_map, default_sort):
         sort_dir = "asc"
 
     accessor = sort_map[sort_key]
+    kind = SORT_AUTO
+    if isinstance(accessor, tuple):
+        accessor, kind = accessor
 
     def get_key(obj):
         try:
             val = accessor(obj) if callable(accessor) else getattr(obj, accessor, None)
         except Exception:
             val = None
-        return _make_sort_key(val)
+        return _make_sort_key(val, kind)
 
-    sign = 1 if sort_dir == "asc" else -1
-
-    def cmp(a, b):
-        ka = get_key(a)
-        kb = get_key(b)
-        # Empty values sempre in fondo (regardless dir)
-        if ka is None and kb is None:
-            return 0
-        if ka is None:
-            return 1
-        if kb is None:
-            return -1
-        # Tipi diversi (es. float vs str): confronta come stringa
-        try:
-            if ka < kb:
-                return -1 * sign
-            if ka > kb:
-                return 1 * sign
-        except TypeError:
-            sa, sb = str(ka), str(kb)
-            if sa < sb:
-                return -1 * sign
-            if sa > sb:
-                return 1 * sign
-        return 0
-
-    records.sort(key=_cmp_to_key(cmp))
-    return records, sort_key, sort_dir
+    # Chiave calcolata una sola volta per record (non a ogni confronto).
+    keyed = [(get_key(r), r) for r in records]
+    present = [kr for kr in keyed if kr[0] is not None]
+    missing = [r for k, r in keyed if k is None]
+    present.sort(key=lambda kr: kr[0], reverse=(sort_dir == "desc"))
+    return [r for _, r in present] + missing, sort_key, sort_dir
 
 
 def _read_sort_params(request, allowed_keys, default_sort):
@@ -165,6 +157,17 @@ def _read_sort_params(request, allowed_keys, default_sort):
     if sort_dir not in ("asc", "desc"):
         sort_dir = "asc"
     return sort_key, sort_dir
+
+
+def _sorted_page(request, queryset, sort_map, default_sort, per_page=25):
+    """Sort server-side cross-page + paginazione. Ritorna (page_obj, all_records, key, dir)."""
+    sort_key, sort_dir = _read_sort_params(request, sort_map, default_sort)
+    all_records, sort_key, sort_dir = _sort_records(
+        list(queryset), sort_key, sort_dir, sort_map, default_sort
+    )
+    page_obj = Paginator(all_records, per_page).get_page(request.GET.get("page"))
+    return page_obj, all_records, sort_key, sort_dir
+
 
 # --- 1. LOGIN (username o email + password) ---
 def login_view(request):
@@ -192,54 +195,46 @@ def register_step1(request):
     if request.method == "POST":
         # Sanitizzazione: trim + lowercase
         email = (request.POST.get("email") or "").strip().lower()
+        generic_ok = "Se l'email è valida, riceverai un link per completare la registrazione."
 
-        if Socio.objects.filter(email_jesap__iexact=email).exists():
-            if User.objects.filter(email__iexact=email).exists():
-                # Messaggio generico per non rivelare se l'account esiste già
-                messages.success(
-                    request,
-                    "Se l'email è valida, riceverai un link per completare la registrazione.",
-                )
-                return redirect("register_step1")
+        if not email or not Socio.objects.filter(email_jesap__iexact=email).exists():
+            # Messaggio generico anti-enumerazione
+            messages.success(request, generic_ok)
+            return redirect("register_step1")
 
-            # Creazione Token Sicuro
-            signer = signing.TimestampSigner()
-            signed_token = signer.sign(email) 
-            verification_link = request.build_absolute_uri(f"/register/step2/{signed_token}/")
+        if User.objects.filter(email__iexact=email).exists():
+            # Messaggio generico per non rivelare se l'account esiste già
+            messages.success(request, generic_ok)
+            return redirect("register_step1")
 
-            try:
-                ctx = {'verification_link': verification_link}
-                text_body = render_to_string('registration/registration_verify_email.txt', ctx)
-                html_body = render_to_string('registration/registration_verify_email.html', ctx)
+        signed_token = signing.TimestampSigner().sign(email)
+        verification_link = request.build_absolute_uri(
+            reverse("register_step2", args=[signed_token])
+        )
 
-                msg = EmailMultiAlternatives(
-                    subject="Completa la tua registrazione al Gestionale JESAP",
-                    body=text_body,
-                    from_email=None,
-                    to=[email],
-                )
-                msg.attach_alternative(html_body, 'text/html')
-                msg.send(fail_silently=False)
-                
-                messages.success(
-                    request,
-                    "Ti abbiamo inviato un'email! Controlla la casella di posta (o il terminale) per impostare la password.",
-                )
-                return redirect("register_step1")
+        try:
+            ctx = {'verification_link': verification_link}
+            msg = EmailMultiAlternatives(
+                subject="Completa la tua registrazione al Gestionale JESAP",
+                body=render_to_string('registration/registration_verify_email.txt', ctx),
+                from_email=None,
+                to=[email],
+            )
+            msg.attach_alternative(
+                render_to_string('registration/registration_verify_email.html', ctx), 'text/html',
+            )
+            msg.send(fail_silently=False)
+        except Exception:
+            logger.exception("Invio email di registrazione fallito")
+            messages.error(
+                request,
+                "Errore tecnico con il server di posta. Riprova più tardi o contatta l'amministratore.",
+            )
+            return redirect("register_step1")
 
-            except Exception as e:
-                # Se la mail fallisce, logga l'errore nel terminale senza far crashare la pagina
-                print(f"❌ ERRORE INVIO EMAIL: {e}")
-                messages.error(
-                    request,
-                    "Errore tecnico con il server di posta. Riprova più tardi o contatta l'amministratore.",
-                )
-                return redirect("register_step1")
-
-        # Messaggio generico anti-enumerazione: stessa risposta sia che l'email esista o no
         messages.success(
             request,
-            "Se l'email è valida, riceverai un link per completare la registrazione.",
+            "Ti abbiamo inviato un'email! Controlla la casella di posta per impostare la password.",
         )
         return redirect("register_step1")
 
@@ -248,44 +243,46 @@ def register_step1(request):
 
 # --- 3. SUBSCRIBE STEP 2 (Double Password & Create Account) ---
 def register_step2(request, token):
-    signer = signing.TimestampSigner()
-    
     try:
-        email = signer.unsign(token, max_age=86400) # Scade dopo 24h
+        email = signing.TimestampSigner().unsign(token, max_age=86400)  # Scade dopo 24h
     except (signing.SignatureExpired, signing.BadSignature):
         messages.error(request, "Link non valido o scaduto.")
         return redirect("register_step1")
 
+    email_clean = email.strip().lower()
+    # Email già validata in step1 (formato nome.cognome@jesap.it firmato).
+    short_username = email_clean.split("@", 1)[0]
+    ctx = {"email": email}
+
     if request.method == "POST":
-        password = request.POST.get("password")
-        password_confirm = request.POST.get("password_confirm")
+        password = request.POST.get("password") or ""
+        password_confirm = request.POST.get("password_confirm") or ""
 
-        if password != password_confirm:
+        if not password or password != password_confirm:
             messages.error(request, "Le password non coincidono.")
-        elif len(password) < 8:
-            messages.error(request, "La password deve essere di almeno 8 caratteri.")
-        else:
-            email_clean = email.strip().lower()
-            # Email già validata in step1 (formato nome.cognome@jesap.it firmato).
-            short_username = email_clean.split("@", 1)[0]
+            return render(request, "dashboard/register_step2.html", ctx)
 
-            if User.objects.filter(username__iexact=short_username).exists():
-                messages.error(
-                    request,
-                    "Questo username è già in uso. Contatta l'amministratore se hai bisogno di assistenza.",
-                )
-                return render(request, "dashboard/register_step2.html", {"email": email})
-
-            User.objects.create_user(
-                username=short_username,
-                email=email_clean,
-                password=password,
+        if (User.objects.filter(username__iexact=short_username).exists()
+                or User.objects.filter(email__iexact=email_clean).exists()):
+            messages.error(
+                request,
+                "Esiste già un account per questa email. Accedi o usa «Password dimenticata».",
             )
+            return render(request, "dashboard/register_step2.html", ctx)
 
-            messages.success(request, f"Account creato! Il tuo username è: {short_username}")
-            return redirect("login")
+        try:
+            # Stessi validatori di AUTH_PASSWORD_VALIDATORS (lunghezza, comuni, numeriche, ...)
+            validate_password(password, user=User(username=short_username, email=email_clean))
+        except ValidationError as exc:
+            for err in exc.messages:
+                messages.error(request, err)
+            return render(request, "dashboard/register_step2.html", ctx)
 
-    return render(request, "dashboard/register_step2.html", {"email": email})
+        User.objects.create_user(username=short_username, email=email_clean, password=password)
+        messages.success(request, f"Account creato! Il tuo username è: {short_username}")
+        return redirect("login")
+
+    return render(request, "dashboard/register_step2.html", ctx)
 
 
 # --- PASSWORD RESET (Custom with email error handling) ---
@@ -324,16 +321,17 @@ class CustomPasswordResetConfirmView(DjangoPasswordResetConfirmView):
 def home(request):
     return render(request, "dashboard/home.html")
 
+
 # Sort map per Leads
 LEADS_SORT_MAP = {
     "lead_id": "lead_id",
-    "azienda": "azienda",
-    "referente": "referente",
-    "owner": "owner",
-    "fase": "fase_attuale",
-    "stato": "stato_lead",
-    "contratto": "stato_contratto",
-    "priorita": "priorita",
+    "azienda": ("azienda", SORT_TEXT),
+    "referente": ("referente", SORT_TEXT),
+    "owner": ("owner", SORT_TEXT),
+    "fase": ("fase_attuale", SORT_TEXT),
+    "stato": ("stato_lead", SORT_TEXT),
+    "contratto": ("stato_contratto", SORT_TEXT),
+    "priorita": ("priorita", SORT_TEXT),
     "valore_stimato": "valore_stimato",
     "valore_ponderato": "valore_ponderato",
     "probabilita": "probabilita",
@@ -385,11 +383,8 @@ def leads(request):
     if alert_only:
         queryset = queryset.filter(alert_follow_up=True)
 
-    # Sort server-side cross-page
-    sort_key, sort_dir = _read_sort_params(request, LEADS_SORT_MAP, LEADS_SORT_DEFAULT)
-    all_records = list(queryset)
-    all_records, sort_key, sort_dir = _sort_records(
-        all_records, sort_key, sort_dir, LEADS_SORT_MAP, LEADS_SORT_DEFAULT
+    page_obj, all_records, sort_key, sort_dir = _sorted_page(
+        request, queryset, LEADS_SORT_MAP, LEADS_SORT_DEFAULT
     )
 
     # KPI rapidi sopra la tabella (sull'intero dataset filtrato, non sulla pagina)
@@ -402,9 +397,6 @@ def leads(request):
             (l.valore_ponderato or 0) for l in all_records
         ),
     }
-
-    paginator = Paginator(all_records, 25)
-    page_obj = paginator.get_page(request.GET.get("page"))
 
     return render(request, "dashboard/leads.html", {
         "leads": page_obj,
@@ -426,14 +418,19 @@ def leads(request):
 # ============================================================
 # LEAD CRUD (Editor-only)
 # ============================================================
-@user_passes_test(is_editor)
+@editor_required
 def lead_create(request):
     if request.method == 'POST':
         form = LeadForm(request.POST)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Lead creata con successo!")
-            return redirect('leads')
+            try:
+                form.save()
+            except IntegrityError:
+                logger.exception("Creazione lead fallita")
+                form.add_error(None, "Impossibile salvare la lead. Riprova tra qualche secondo.")
+            else:
+                messages.success(request, "Lead creata con successo!")
+                return redirect('leads')
     else:
         form = LeadForm()
     return render(request, 'dashboard/lead_form.html', {
@@ -441,7 +438,7 @@ def lead_create(request):
     })
 
 
-@user_passes_test(is_editor)
+@editor_required
 def lead_update(request, pk):
     lead = get_object_or_404(Lead, lead_id=pk)
     if request.method == 'POST':
@@ -457,7 +454,7 @@ def lead_update(request, pk):
     })
 
 
-@user_passes_test(is_editor)
+@editor_required
 def lead_delete(request, pk):
     lead = get_object_or_404(Lead, lead_id=pk)
     if request.method == 'POST':
@@ -470,8 +467,8 @@ def lead_delete(request, pk):
 # Sort map per Partnership (tab "partnership")
 PARTNERSHIP_SORT_MAP = {
     "id": "id_codice",
-    "nome": "partnership",
-    "status": "status_partnership",
+    "nome": ("partnership", SORT_TEXT),
+    "status": ("status_partnership", SORT_TEXT),
     "data_firma": "data_firma",
     "anno": "anno",
 }
@@ -479,9 +476,9 @@ PARTNERSHIP_SORT_DEFAULT = ("nome", "asc")
 
 # Sort map per Partnership tab "non_finalizzate" e "lead"
 PARTNERSHIP_NF_SORT_MAP = {
-    "nome": "partnership",
-    "realta": "partnership",
-    "contatti": "contatti",
+    "nome": ("partnership", SORT_TEXT),
+    "realta": ("partnership", SORT_TEXT),
+    "contatti": ("contatti", SORT_TEXT),
     "data_firma": "data_firma",
     "anno": "anno",
 }
@@ -490,10 +487,7 @@ PARTNERSHIP_NF_SORT_DEFAULT = ("nome", "asc")
 
 @login_required(login_url="login")
 def partnerships(request):
-    # Captura a tab atual (padrão: partnership)
     tab = request.GET.get("tab", "partnership")
-
-    # Captura os parâmetros de busca e filtro
     search_query = request.GET.get("q", "").strip()
     status_filter = request.GET.get("status", "").strip()
 
@@ -508,9 +502,7 @@ def partnerships(request):
         queryset = Partnership.objects.filter(
             status_partnership__in=Partnership.STATUS_PARTNERSHIP_TAB
         )
-
-        stati_partnership = list(Partnership.STATUS_PARTNERSHIP_TAB)
-        context["stati_partnership"] = stati_partnership
+        context["stati_partnership"] = list(Partnership.STATUS_PARTNERSHIP_TAB)
 
         if search_query:
             queryset = queryset.filter(
@@ -518,85 +510,53 @@ def partnerships(request):
                 Q(contatti__icontains=search_query) |
                 Q(id_codice__icontains=search_query)
             )
-
         if status_filter:
             queryset = queryset.filter(status_partnership=status_filter)
-
-        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_SORT_MAP, PARTNERSHIP_SORT_DEFAULT)
-        all_records = list(queryset)
-        all_records, sort_key, sort_dir = _sort_records(
-            all_records, sort_key, sort_dir, PARTNERSHIP_SORT_MAP, PARTNERSHIP_SORT_DEFAULT
-        )
-
-        paginator = Paginator(all_records, 25)
-        page_obj = paginator.get_page(request.GET.get("page"))
-        context["partnerships"] = page_obj
-        context["dati_tabella"] = page_obj
-        context["page_obj"] = page_obj
-        context["current_sort"] = sort_key
-        context["current_dir"] = sort_dir
+        sort_map, sort_default, context_key = PARTNERSHIP_SORT_MAP, PARTNERSHIP_SORT_DEFAULT, "partnerships"
 
     elif tab == "non_finalizzate":
         queryset = Partnership.objects.filter(
             status_partnership__iexact=Partnership.STATUS_NON_FINALIZZATA
         )
-
         if search_query:
             queryset = queryset.filter(
                 Q(partnership__icontains=search_query) |
                 Q(contatti__icontains=search_query)
             )
-
-        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT)
-        all_records = list(queryset)
-        all_records, sort_key, sort_dir = _sort_records(
-            all_records, sort_key, sort_dir, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT
-        )
-
-        paginator = Paginator(all_records, 25)
-        page_obj = paginator.get_page(request.GET.get("page"))
-        context["non_finalizzate"] = page_obj
-        context["dati_tabella"] = page_obj
-        context["page_obj"] = page_obj
-        context["current_sort"] = sort_key
-        context["current_dir"] = sort_dir
+        sort_map, sort_default, context_key = PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT, "non_finalizzate"
 
     elif tab == "lead":
         queryset = Partnership.objects.filter(
             status_partnership__iexact=Partnership.STATUS_TRATTATIVA
         )
-
         if search_query:
             queryset = queryset.filter(partnership__icontains=search_query)
-
-        sort_key, sort_dir = _read_sort_params(request, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT)
-        all_records = list(queryset)
-        all_records, sort_key, sort_dir = _sort_records(
-            all_records, sort_key, sort_dir, PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT
-        )
-
-        paginator = Paginator(all_records, 25)
-        page_obj = paginator.get_page(request.GET.get("page"))
-        context["leads"] = page_obj
-        context["dati_tabella"] = page_obj
-        context["page_obj"] = page_obj
-        context["current_sort"] = sort_key
-        context["current_dir"] = sort_dir
+        sort_map, sort_default, context_key = PARTNERSHIP_NF_SORT_MAP, PARTNERSHIP_NF_SORT_DEFAULT, "leads"
 
     else:
         context["dati_tabella"] = []
+        return render(request, "dashboard/partnerships.html", context)
 
+    page_obj, _, sort_key, sort_dir = _sorted_page(request, queryset, sort_map, sort_default)
+    context.update({
+        context_key: page_obj,
+        "dati_tabella": page_obj,
+        "page_obj": page_obj,
+        "current_sort": sort_key,
+        "current_dir": sort_dir,
+    })
     return render(request, "dashboard/partnerships.html", context)
+
 
 # Sort map per Progetti: chiave URL → attrname o lambda
 PROGETTI_SORT_MAP = {
-    "progetto": "nome_progetto",
-    "stato": "stato",
-    "pm": "pm",
-    "provenienza": "provenienza",
+    "progetto": ("nome_progetto", SORT_TEXT),
+    "stato": ("stato", SORT_TEXT),
+    "pm": ("pm", SORT_TEXT),
+    "provenienza": ("provenienza", SORT_TEXT),
     "data_inizio": "data_inizio",
     "data_fine": "data_fine_contratto",
-    "fatturato": "fatturato_senza_iva",
+    "fatturato": "fatturato_senza_iva_field",
 }
 PROGETTI_SORT_DEFAULT = ("progetto", "asc")
 
@@ -606,8 +566,9 @@ def progetti(request):
     search_query = request.GET.get("q", "").strip()
     stato_filter = request.GET.get("stato", "").strip()
 
-    queryset = Progetti.objects.all()
-    stati = ch.STATO_PROGETTO_VALUES
+    # Righe senza nome = residui del foglio: escluse qui, non nel template,
+    # così paginazione e stato vuoto restano coerenti.
+    queryset = Progetti.objects.filter(_named("nome_progetto"))
 
     if search_query:
         queryset = queryset.filter(
@@ -619,43 +580,44 @@ def progetti(request):
     if stato_filter:
         queryset = queryset.filter(stato=stato_filter)
 
-    # Sort server-side: load all → sort Python → paginate
-    sort_key, sort_dir = _read_sort_params(request, PROGETTI_SORT_MAP, PROGETTI_SORT_DEFAULT)
-    all_records = list(queryset)
-    all_records, sort_key, sort_dir = _sort_records(
-        all_records, sort_key, sort_dir, PROGETTI_SORT_MAP, PROGETTI_SORT_DEFAULT
+    page_obj, _, sort_key, sort_dir = _sorted_page(
+        request, queryset, PROGETTI_SORT_MAP, PROGETTI_SORT_DEFAULT
     )
-
-    paginator = Paginator(all_records, 25)
-    page_obj = paginator.get_page(request.GET.get("page"))
 
     return render(request, "dashboard/progetti.html", {
         "progetti": page_obj,
         "page_obj": page_obj,
         "search_query": search_query,
         "stato_filter": stato_filter,
-        "stati": stati,
+        "stati": ch.STATO_PROGETTO_VALUES,
         "is_editor": is_editor(request.user),
         "current_sort": sort_key,
         "current_dir": sort_dir,
     })
 
 
-@user_passes_test(is_editor)
+@editor_required
 def progetto_create(request):
     if request.method == 'POST':
         form = ProgettoForm(request.POST)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Progetto creato con successo!")
-            return redirect('progetti')
+            try:
+                with transaction.atomic():
+                    form.save()
+            except IntegrityError:
+                # Codice generato già preso (creazione concorrente): nessuna sovrascrittura.
+                logger.warning("Collisione CODICE PROGETTO in creazione", exc_info=True)
+                form.add_error(None, "Codice progetto già esistente. Riprova a salvare.")
+            else:
+                messages.success(request, "Progetto creato con successo!")
+                return redirect('progetti')
     else:
         form = ProgettoForm()
 
     return render(request, 'dashboard/progetto_form.html', {'form': form, 'azione': 'Nuovo'})
 
 
-@user_passes_test(is_editor)
+@editor_required
 def progetto_update(request, pk):
     progetto = get_object_or_404(Progetti, codice_progetto=pk)
 
@@ -671,7 +633,7 @@ def progetto_update(request, pk):
     return render(request, 'dashboard/progetto_form.html', {'form': form, 'azione': 'Modifica'})
 
 
-@user_passes_test(is_editor)
+@editor_required
 def progetto_delete(request, pk):
     progetto = get_object_or_404(Progetti, codice_progetto=pk)
 
@@ -682,30 +644,46 @@ def progetto_delete(request, pk):
 
     return render(request, 'dashboard/progetto_confirm_delete.html', {'progetto': progetto})
 
-@login_required(login_url="login")
-def eventi(request):
-    eventi_list = Eventi.objects.all()
-    return render(request, "dashboard/pages/eventi.html", {"eventi": eventi_list})
 
-@login_required(login_url="login")
-def formazioni(request):
-    formazioni_list = Formazioni.objects.all()
-    return render(request, "dashboard/pages/formazioni.html", {"formazioni": formazioni_list})
+# Sort map per Soci
+SOCI_SORT_MAP = {
+    "nome": ("nome_e_cognome", SORT_TEXT),
+    "ruolo": ("ruolo", SORT_TEXT),
+    "area": ("area_di_appartenenza", SORT_TEXT),
+}
+SOCI_SORT_DEFAULT = ("nome", "asc")
+
+SOCI_AREA_TABS = {
+    "da": "D&A",
+    "bd": "BD",
+    "hr": "HR",
+    "mc": "M&C",
+}
+
+# Ruoli Board: valori ufficiali (EN, vedi Soci.Ruolo) + legacy IT dal foglio.
+_BOARD_ROLE_FRAGMENTS = (
+    "board", "president", "segretari", "secretary", "tesorier", "treasurer",
+    "international manager",
+)
+
+
+def _board_filter():
+    q = Q(area_di_appartenenza__iexact="Board") | Q(ruolo_esteso__icontains="board")
+    for fragment in _BOARD_ROLE_FRAGMENTS:
+        q |= Q(ruolo__icontains=fragment)
+    return q
+
 
 @login_required(login_url="login")
 def soci(request):
     tab = request.GET.get("tab", "da")
     search_query = request.GET.get("q", "").strip()
+    user_is_admin = _is_admin_user(request.user)
 
-    AREA_TABS = {
-        "da":  "D&A",
-        "bd":  "BD",
-        "hr":  "HR",
-        "mc":  "M&C",
-    }
-
-    # Redirect unknown tabs to default
-    valid_tabs = set(AREA_TABS) | {"board", "admin"}
+    # Tab sconosciute (o admin per non-admin) → default
+    valid_tabs = set(SOCI_AREA_TABS) | {"board"}
+    if user_is_admin:
+        valid_tabs.add("admin")
     if tab not in valid_tabs:
         tab = "da"
 
@@ -726,107 +704,82 @@ def soci(request):
                 | Q(last_name__icontains=search_query)
             )
         context["admin_users"] = admin_users.order_by("username")
-
-        # Admin (is_staff o superuser) può promuovere/rimuovere altri admin.
-        if request.user.is_staff or request.user.is_superuser:
-            all_non_admin = User.objects.filter(is_staff=False, is_superuser=False).order_by("username")
-            context["non_admin_users"] = all_non_admin
-            context["can_manage_admins"] = True
-        else:
-            context["can_manage_admins"] = False
-
+        context["non_admin_users"] = User.objects.filter(
+            is_staff=False, is_superuser=False,
+        ).order_by("username")
+        context["can_manage_admins"] = True
         context["soci_list"] = []
+        return render(request, "dashboard/soci.html", context)
+
+    # Base filter: only active members
+    queryset = Soci.objects.filter(status__iexact="Associato").filter(_named("nome_e_cognome"))
+
+    if tab == "board":
+        queryset = queryset.filter(_board_filter())
     else:
-        # Base filter: only active members
-        queryset = Soci.objects.filter(status__iexact="Associato")
+        queryset = queryset.filter(area_di_appartenenza__iexact=SOCI_AREA_TABS[tab])
 
-        if tab == "board":
-            queryset = queryset.filter(
-                Q(ruolo__icontains="board")
-                | Q(ruolo__icontains="presidente")
-                | Q(ruolo__icontains="vicepresidente")
-                | Q(ruolo__icontains="segretario")
-                | Q(ruolo__icontains="tesoriere")
-                | Q(ruolo_esteso__icontains="board")
-            )
-        elif tab in AREA_TABS:
-            queryset = queryset.filter(area_di_appartenenza__iexact=AREA_TABS[tab])
-
-        if search_query:
-            queryset = queryset.filter(
-                Q(nome_e_cognome__icontains=search_query)
-                | Q(ruolo__icontains=search_query)
-                | Q(email_jesap__icontains=search_query)
-            )
-
-        # Sort server-side cross-page
-        sort_key, sort_dir = _read_sort_params(request, SOCI_SORT_MAP, SOCI_SORT_DEFAULT)
-        all_records = list(queryset)
-        all_records, sort_key, sort_dir = _sort_records(
-            all_records, sort_key, sort_dir, SOCI_SORT_MAP, SOCI_SORT_DEFAULT
+    if search_query:
+        queryset = queryset.filter(
+            Q(nome_e_cognome__icontains=search_query)
+            | Q(ruolo__icontains=search_query)
+            | Q(email_jesap__icontains=search_query)
         )
 
-        paginator = Paginator(all_records, 25)
-        page_obj = paginator.get_page(request.GET.get("page"))
-        context["soci_list"] = page_obj
-        context["page_obj"] = page_obj
-        context["current_sort"] = sort_key
-        context["current_dir"] = sort_dir
-
+    page_obj, _, sort_key, sort_dir = _sorted_page(
+        request, queryset, SOCI_SORT_MAP, SOCI_SORT_DEFAULT
+    )
+    context.update({
+        "soci_list": page_obj,
+        "page_obj": page_obj,
+        "current_sort": sort_key,
+        "current_dir": sort_dir,
+    })
     return render(request, "dashboard/soci.html", context)
 
 
-# Sort map per Soci
-SOCI_SORT_MAP = {
-    "nome": "nome_e_cognome",
-    "ruolo": "ruolo",
-    "area": "area_di_appartenenza",
-}
-SOCI_SORT_DEFAULT = ("nome", "asc")
+def _target_user(request):
+    """Utente da POST user_id; None se id mancante/non numerico/inesistente."""
+    user_id = (request.POST.get("user_id") or "").strip()
+    if not user_id.isdigit():
+        return None
+    return User.objects.filter(pk=int(user_id)).first()
 
 
-def _is_admin_user(u):
-    return u.is_authenticated and (u.is_staff or u.is_superuser)
-
-
-@login_required(login_url="login")
-@user_passes_test(_is_admin_user)
+@require_POST
+@admin_required
 def admin_promote(request):
-    if request.method == "POST":
-        user_id = request.POST.get("user_id")
-        try:
-            target = User.objects.get(pk=user_id)
-            target.is_staff = True
-            target.save(update_fields=["is_staff"])
-            messages.success(request, f"{target.username} promosso ad admin.")
-        except User.DoesNotExist:
-            messages.error(request, "Utente non trovato.")
+    target = _target_user(request)
+    if target is None:
+        messages.error(request, "Utente non trovato.")
+    else:
+        target.is_staff = True
+        target.save(update_fields=["is_staff"])
+        messages.success(request, f"{target.username} promosso ad admin.")
     return redirect(reverse("soci") + "?tab=admin")
 
 
-@login_required(login_url="login")
-@user_passes_test(_is_admin_user)
+@require_POST
+@admin_required
 def admin_demote(request):
-    if request.method == "POST":
-        user_id = request.POST.get("user_id")
-        try:
-            target = User.objects.get(pk=user_id)
-            if target == request.user:
-                messages.error(request, "Non puoi rimuovere te stesso.")
-            elif target.is_superuser and not request.user.is_superuser:
-                # Solo un superuser può rimuovere un altro superuser.
-                messages.error(request, "Non puoi rimuovere un superuser.")
-            else:
-                target.is_staff = False
-                if request.user.is_superuser:
-                    target.is_superuser = False
-                    target.save(update_fields=["is_staff", "is_superuser"])
-                else:
-                    target.save(update_fields=["is_staff"])
-                messages.success(request, f"{target.username} rimosso dagli admin.")
-        except User.DoesNotExist:
-            messages.error(request, "Utente non trovato.")
+    target = _target_user(request)
+    if target is None:
+        messages.error(request, "Utente non trovato.")
+    elif target == request.user:
+        messages.error(request, "Non puoi rimuovere te stesso.")
+    elif target.is_superuser and not request.user.is_superuser:
+        # Solo un superuser può rimuovere un altro superuser.
+        messages.error(request, "Non puoi rimuovere un superuser.")
+    else:
+        target.is_staff = False
+        if request.user.is_superuser:
+            target.is_superuser = False
+            target.save(update_fields=["is_staff", "is_superuser"])
+        else:
+            target.save(update_fields=["is_staff"])
+        messages.success(request, f"{target.username} rimosso dagli admin.")
     return redirect(reverse("soci") + "?tab=admin")
+
 
 _KIND_TO_FORM = {
     Partnership.KIND_FULL:    PartnershipFullForm,
@@ -834,13 +787,49 @@ _KIND_TO_FORM = {
     Partnership.KIND_NON_FIN: NonFinalizzataForm,
 }
 
+# Layout del form partnership: ogni kind mostra solo i campi che possiede.
+PARTNERSHIP_FORM_SECTIONS = (
+    ('Identificazione', ('partnership', 'id_codice', 'tipologia', 'oggetto_primario', 'status_partnership')),
+    ('Date e durata', ('data_firma', 'anno', 'durata', 'rinnovo', 'data_ultimo_rinnovo', 'data_fine_prevista')),
+    ('Numeri', ('numero_progetti', 'numero_partecipanti')),
+    ('Contatti & Drive', ('contatti', 'cartella_sul_drive', 'url_cartella')),
+    ('Vantaggi & Compenso', ('vantaggi_partner', 'compenso_economico')),
+)
+
+
+def _form_sections(form, layout):
+    sections = []
+    for title, names in layout:
+        fields = [form[name] for name in names if name in form.fields]
+        if fields:
+            sections.append((title, fields))
+    return sections
+
+
+def _kind_for_status(status):
+    status = (status or '').strip()
+    if status == Partnership.STATUS_TRATTATIVA:
+        return Partnership.KIND_LEAD
+    if status == Partnership.STATUS_NON_FINALIZZATA:
+        return Partnership.KIND_NON_FIN
+    return Partnership.KIND_FULL
+
 
 def _redirect_to_tab(kind):
     tab = Partnership.KIND_TO_TAB.get(kind, 'partnership')
     return redirect(reverse('partnerships') + f'?tab={tab}')
 
 
-@user_passes_test(is_editor)
+def _render_partnership_form(request, form, azione, kind):
+    return render(request, 'dashboard/partnership_form.html', {
+        'form': form,
+        'azione': azione,
+        'kind': kind,
+        'sections': _form_sections(form, PARTNERSHIP_FORM_SECTIONS),
+    })
+
+
+@editor_required
 def partnership_create(request, kind=Partnership.KIND_FULL):
     if kind not in _KIND_TO_FORM:
         kind = Partnership.KIND_FULL
@@ -849,17 +838,10 @@ def partnership_create(request, kind=Partnership.KIND_FULL):
     if request.method == 'POST':
         form = FormClass(request.POST)
         if form.is_valid():
-            form.save()
+            obj = form.save()
             messages.success(request, "Partnership creata con successo!")
             # Per le full la tab dipende dallo status scelto
-            if kind == Partnership.KIND_FULL:
-                status = form.cleaned_data.get('status_partnership') or ''
-                if status == Partnership.STATUS_TRATTATIVA:
-                    return redirect(reverse('partnerships') + '?tab=lead')
-                if status == Partnership.STATUS_NON_FINALIZZATA:
-                    return redirect(reverse('partnerships') + '?tab=non_finalizzate')
-                return redirect('partnerships')
-            return _redirect_to_tab(kind)
+            return _redirect_to_tab(_kind_for_status(obj.status_partnership))
     else:
         form = FormClass()
 
@@ -868,79 +850,57 @@ def partnership_create(request, kind=Partnership.KIND_FULL):
         Partnership.KIND_LEAD:    'Nuovo Lead',
         Partnership.KIND_NON_FIN: 'Nuova Non Finalizzata',
     }
-    context = {
-        'form': form,
-        'azione': azione_map[kind],
-        'kind': kind,
-    }
-    return render(request, 'dashboard/partnership_form.html', context)
+    return _render_partnership_form(request, form, azione_map[kind], kind)
 
 
-@user_passes_test(is_editor)
+@editor_required
 def partnership_update(request, pk):
     partnership = get_object_or_404(Partnership, partnership=pk)
 
     # Scegli il form in base allo status corrente
-    status = (partnership.status_partnership or '').strip()
-    if status == Partnership.STATUS_TRATTATIVA:
-        FormClass = LeadPartnershipForm
-        kind = Partnership.KIND_LEAD
-    elif status == Partnership.STATUS_NON_FINALIZZATA:
-        FormClass = NonFinalizzataForm
-        kind = Partnership.KIND_NON_FIN
-    else:
-        FormClass = PartnershipFullForm
-        kind = Partnership.KIND_FULL
+    kind = _kind_for_status(partnership.status_partnership)
+    FormClass = _KIND_TO_FORM[kind]
 
     if request.method == 'POST':
         form = FormClass(request.POST, instance=partnership)
         if form.is_valid():
-            form.save()
+            obj = form.save()
             messages.success(request, "Partnership aggiornata con successo!")
-            return _redirect_to_tab(kind)
+            return _redirect_to_tab(_kind_for_status(obj.status_partnership))
     else:
         form = FormClass(instance=partnership)
 
-    context = {'form': form, 'azione': 'Modifica', 'kind': kind}
-    return render(request, 'dashboard/partnership_form.html', context)
+    return _render_partnership_form(request, form, 'Modifica', kind)
 
 
-@user_passes_test(is_editor)
+@editor_required
 def partnership_delete(request, pk):
     partnership = get_object_or_404(Partnership, partnership=pk)
 
     if request.method == 'POST':
+        kind = _kind_for_status(partnership.status_partnership)
         partnership.delete()
         messages.success(request, "Partnership eliminata con successo!")
-        return redirect('partnerships')
+        return _redirect_to_tab(kind)
 
     return render(request, 'dashboard/partnership_confirm_delete.html', {'partnership': partnership})
 
 
-@user_passes_test(is_editor)
+@require_POST
+@editor_required
 def partnership_change_status(request, pk):
     """POST-only: sposta una Partnership in un altro tab cambiando lo status."""
-    if request.method != 'POST':
-        return redirect('partnerships')
-
     partnership = get_object_or_404(Partnership, partnership=pk)
     new_status = (request.POST.get('status') or '').strip()
 
-    valid_statuses = dict(Partnership.STATUS_CHOICES)
-    if new_status not in valid_statuses:
+    if new_status not in dict(Partnership.STATUS_CHOICES):
         messages.error(request, "Status non valido.")
         return redirect('partnerships')
 
     partnership.status_partnership = new_status
     partnership.save(update_fields=['status_partnership'])
     messages.success(request, f"Spostata in '{new_status}'.")
-
-    # Redirect al tab di destinazione
-    if new_status == Partnership.STATUS_TRATTATIVA:
-        return redirect(reverse('partnerships') + '?tab=lead')
-    if new_status == Partnership.STATUS_NON_FINALIZZATA:
-        return redirect(reverse('partnerships') + '?tab=non_finalizzate')
-    return redirect(reverse('partnerships') + '?tab=partnership')
+    return _redirect_to_tab(_kind_for_status(new_status))
 
 
 @require_GET
@@ -950,5 +910,7 @@ def healthz(request):
         with connection.cursor() as c:
             c.execute("SELECT 1")
         return JsonResponse({"status": "ok"})
-    except Exception as e:
-        return JsonResponse({"status": "error", "detail": str(e)}, status=503)
+    except Exception:
+        # Dettagli (host DB, credenziali nei messaggi driver) solo nei log, mai in risposta pubblica.
+        logger.exception("Healthcheck DB fallito")
+        return JsonResponse({"status": "error"}, status=503)

@@ -33,7 +33,8 @@ print(f"[settings:env] presenti={_present} mancanti={_missing}",
 # Detect Railway runtime — se siamo lì, DATABASE_URL è OBBLIGATORIA
 ON_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
 
-DEBUG = _env('DEBUG', 'True') == 'True'
+# Default sicuro: su Railway senza DEBUG esplicito → produzione.
+DEBUG = _env('DEBUG', 'False' if ON_RAILWAY else 'True') == 'True'
 
 secret_key_env = os.getenv('SECRET_KEY')
 if not DEBUG and not secret_key_env:
@@ -54,6 +55,9 @@ else:
 
 # Application definition
 INSTALLED_APPS = [
+    # Prima di admin/auth: i template `registration/*` custom devono avere precedenza
+    # su quelli built-in (email reset password, subject).
+    'dashboard',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -61,7 +65,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'anymail',
-    'dashboard',
 ]
 
 MIDDLEWARE = [
@@ -166,14 +169,15 @@ else:
         DATABASES["default"]["OPTIONS"].setdefault("sslmode", os.getenv("PGSSLMODE", "require"))
 
 # Startup log: quale DB sta usando l'app. Visibile nei Deploy Logs Railway.
-import sys as _sys
 _engine = DATABASES["default"].get("ENGINE", "?")
 _host = DATABASES["default"].get("HOST", "(file)")
 print(
     f"[settings] DB engine={_engine} host={_host} DEBUG={DEBUG} "
     f"USE_POSTGRES={FORCE_POSTGRES} DATABASE_URL_set={bool(DATABASE_URL)}",
-    file=_sys.stderr, flush=True,
+    file=sys.stderr, flush=True,
 )
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -203,6 +207,9 @@ STORAGES = {
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 
+# Link reset password valido 24h (come dichiarato nel testo dell'email).
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
+
 # Sessione/Cookie hardening: HttpOnly sempre, Secure+SameSite in prod (DEBUG=False).
 # Django usa session cookies (server-side), nessun token in localStorage.
 SESSION_COOKIE_HTTPONLY = True
@@ -211,7 +218,6 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 if not DEBUG:

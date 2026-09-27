@@ -1,91 +1,30 @@
 import re
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from decimal import Decimal
+from random import randint
 
+from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
-from django import forms
-from .models import Partnership, Progetti, Lead
+from django.core.validators import DecimalValidator
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+
 from . import choices as ch
-from datetime import datetime
+from .models import Lead, Partnership, Progetti
+from .utils.parsing import parse_date_text, parse_money
 
-
-MONTH_CHOICES = [
-    ('', 'Mese'),
-    ('01', '01 - Janeiro'),
-    ('02', '02 - Fevereiro'),
-    ('03', '03 - Março'),
-    ('04', '04 - Abril'),
-    ('05', '05 - Maio'),
-    ('06', '06 - Junho'),
-    ('07', '07 - Julho'),
-    ('08', '08 - Agosto'),
-    ('09', '09 - Setembro'),
-    ('10', '10 - Outubro'),
-    ('11', '11 - Novembro'),
-    ('12', '12 - Dezembro'),
-]
-
-YEAR_CHOICES = [('', 'Anno')] + [(str(year), str(year)) for year in range(2000, datetime.now().year + 6)]
-
-
-class MonthYearWidget(forms.MultiWidget):
-    def __init__(self, attrs=None):
-        widgets = [
-            forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 120px;'}, choices=MONTH_CHOICES),
-            forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 120px;'}, choices=YEAR_CHOICES),
-        ]
-        super().__init__(widgets, attrs)
-
-    def decompress(self, value):
-        if value:
-            value = str(value).strip()
-            if '/' in value:
-                month, year = value.split('/', 1)
-                return [month.zfill(2), year]
-        return [None, None]
-
-
-class MonthYearField(forms.MultiValueField):
-    widget = MonthYearWidget
-
-    def __init__(self, *args, **kwargs):
-        fields = (
-            forms.ChoiceField(choices=MONTH_CHOICES, required=False),
-            forms.ChoiceField(choices=YEAR_CHOICES, required=False),
-        )
-        kwargs.setdefault('require_all_fields', False)
-        super().__init__(fields=fields, *args, **kwargs)
-
-    def compress(self, data_list):
-        if not data_list:
-            return ''
-
-        month = (data_list[0] or '').strip()
-        year = (data_list[1] or '').strip()
-
-        if not month and not year:
-            return ''
-
-        if month and year:
-            return f'{month}/{year}'
-
-        raise forms.ValidationError('Il Periodo deve includere mese e anno.')
 
 DATE_PLACEHOLDER = 'GG/MM/AAAA'
 
 
 def _normalize_date_text(value):
-    if value in (None, ''):
+    if value in (None, '') or not str(value).strip():
         return ''
-    txt = str(value).strip()
-    if not txt:
-        return ''
-    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%y'):
-        try:
-            return datetime.strptime(txt, fmt).strftime('%d/%m/%Y')
-        except ValueError:
-            continue
-    raise forms.ValidationError('Data non valida. Usa GG/MM/AAAA.')
+    parsed = parse_date_text(value)
+    if parsed is None:
+        raise forms.ValidationError('Data non valida. Usa GG/MM/AAAA.')
+    return parsed.strftime('%d/%m/%Y')
 
 
 class PartnershipForm(forms.ModelForm):
@@ -371,15 +310,9 @@ class NonFinalizzataForm(forms.ModelForm):
 
 
 def _parse_date_ddmmyyyy_to_iso(value):
-    if not value:
-        return ''
-    value = str(value).strip()
-    if not value:
-        return ''
-    try:
-        return datetime.strptime(value, '%d/%m/%Y').strftime('%Y-%m-%d')
-    except ValueError:
-        return ''
+    """Valore DB (qualsiasi formato data noto) → ISO per <input type="date">."""
+    parsed = parse_date_text(value)
+    return parsed.isoformat() if parsed else ''
 
 
 def _format_iso_to_ddmmyyyy(value):
@@ -392,19 +325,9 @@ def _format_iso_to_ddmmyyyy(value):
 
 
 def _parse_money_to_decimal(raw):
-    if raw in (None, ''):
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    text = re.sub(r'[^\d,.\-]', '', text)
-    if ',' in text and '.' in text:
-        text = text.replace('.', '').replace(',', '.')
-    elif ',' in text:
-        text = text.replace(',', '.')
     try:
-        return Decimal(text)
-    except InvalidOperation:
+        return parse_money(raw)
+    except ValueError:
         raise forms.ValidationError('Inserisci un numero valido (es: 880).')
 
 
@@ -764,6 +687,30 @@ class ProgettoForm(forms.ModelForm):
 # ============================================================
 # LEAD (BD pipeline)
 # ============================================================
+LEAD_ID_MAX_ATTEMPTS = 5
+
+
+def _generate_lead_id():
+    """Formato Apps Script: LEAD-YYYYMMDD-HHMMSS-N (ora locale Europe/Rome)."""
+    now = timezone.localtime()
+    return f"LEAD-{now:%Y%m%d-%H%M%S}-{randint(1, 99)}"
+
+
+def _insert_lead_with_new_id(instance):
+    """INSERT forzato con PK nuova: mai UPDATE silenzioso su una lead esistente."""
+    for _ in range(LEAD_ID_MAX_ATTEMPTS):
+        instance.lead_id = _generate_lead_id()
+        if Lead.objects.filter(pk=instance.lead_id).exists():
+            continue
+        try:
+            with transaction.atomic():
+                instance.save(force_insert=True)
+            return
+        except IntegrityError:
+            continue
+    raise IntegrityError('Impossibile generare un Lead ID univoco.')
+
+
 class LeadForm(forms.ModelForm):
     """
     Form CRUD per Lead BD.
@@ -830,7 +777,7 @@ class LeadForm(forms.ModelForm):
         }
         widgets = {
             'lead_id': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'LEAD-YYYYMMDD-HHMMSS-N (auto)'}),
-            'data_primo_contatto': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'data_primo_contatto': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
             'azienda': forms.TextInput(attrs={'class': 'form-control'}),
             'titolare_azienda': forms.TextInput(attrs={'class': 'form-control'}),
             'referente': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nome Cognome'}),
@@ -843,7 +790,7 @@ class LeadForm(forms.ModelForm):
             'owner': forms.TextInput(attrs={'class': 'form-control'}),
             'probabilita': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 100, 'inputmode': 'numeric'}),
             'prossima_azione': forms.TextInput(attrs={'class': 'form-control'}),
-            'data_prossima_azione': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'data_prossima_azione': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
             'drive_folder_id': forms.TextInput(attrs={'class': 'form-control'}),
             'link_cartella_drive': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
         }
@@ -905,19 +852,27 @@ class LeadForm(forms.ModelForm):
         return v or None
 
     def clean_valore_stimato_input(self):
-        raw = self.cleaned_data.get('valore_stimato_input')
-        if raw in (None, ''):
-            return None
-        text = str(raw).strip()
-        text = re.sub(r'[^\d.,-]', '', text)
-        if ',' in text and '.' in text:
-            text = text.replace('.', '').replace(',', '.')
-        elif ',' in text:
-            text = text.replace(',', '.')
         try:
-            return Decimal(text)
-        except InvalidOperation:
+            value = parse_money(self.cleaned_data.get('valore_stimato_input'))
+        except ValueError:
             raise forms.ValidationError('Inserisci un numero valido (es: 880 o 1.234,56).')
+        if value is not None:
+            # numeric(12,2) su Postgres: oltre → errore DB (500)
+            DecimalValidator(max_digits=12, decimal_places=2)(value)
+        return value
+
+    # Select vuota → default DB (Postgres applica il DEFAULT solo se la colonna è omessa)
+    def clean_fase_attuale(self):
+        return self.cleaned_data.get('fase_attuale') or 'Nuovo'
+
+    def clean_stato_lead(self):
+        return self.cleaned_data.get('stato_lead') or 'Attiva'
+
+    def clean_stato_contratto(self):
+        return self.cleaned_data.get('stato_contratto') or None
+
+    def clean_priorita(self):
+        return self.cleaned_data.get('priorita') or None
 
     def save(self, commit=True):
         """
@@ -927,19 +882,10 @@ class LeadForm(forms.ModelForm):
         - Mappare valore_stimato_input → valore_stimato Decimal
         """
         instance = super().save(commit=False)
+        creating = not (instance.lead_id or '').strip()
 
-        # Auto-gen PK in create
-        if not (instance.lead_id or '').strip():
-            from random import randint
-            now = datetime.now()
-            instance.lead_id = (
-                f"LEAD-{now.strftime('%Y%m%d-%H%M%S')}-{randint(1, 99)}"
-            )
-
-        # Mappa valore_stimato Decimal
-        valore = self.cleaned_data.get('valore_stimato_input')
-        if valore is not None:
-            instance.valore_stimato = valore
+        # Input vuoto → NULL (permette di cancellare il valore)
+        instance.valore_stimato = self.cleaned_data.get('valore_stimato_input')
 
         # Auto-concatena referente se mancante
         if not (instance.referente or '').strip():
@@ -948,7 +894,11 @@ class LeadForm(forms.ModelForm):
             if joined:
                 instance.referente = joined
 
-        if commit:
+        if creating and commit:
+            _insert_lead_with_new_id(instance)
+        elif creating:
+            instance.lead_id = _generate_lead_id()
+        elif commit:
             instance.save()
         return instance
 

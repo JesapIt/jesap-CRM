@@ -1,5 +1,4 @@
 {% extends "dashboard/base_figma.html" %}
-{% load dashboard_extras %}
 
 {% block title %}JESAP Gestionale - {{ azione }} Partnership{% endblock %}
 
@@ -75,105 +74,27 @@
         <div class="form-errors-global">{{ form.non_field_errors }}</div>
       {% endif %}
 
+      {% if kind == 'full' %}
       <div class="form-hint">
         Lo status <strong>«In trattativa»</strong> sposta automaticamente la riga nella tab <strong>Lead Partnership</strong>.
       </div>
+      {% endif %}
 
+      {% for title, fields in sections %}
       <div class="form-section">
-        <h2 class="form-section__title">Identificazione</h2>
+        <h2 class="form-section__title">{{ title }}</h2>
         <div class="form-grid">
-          {% for name in 'partnership id_codice tipologia oggetto_primario status_partnership'|split:' ' %}
-            {% with field=form|get_field:name %}
-              <div class="form-group">
-                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-              </div>
-            {% endwith %}
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h2 class="form-section__title">Date e durata</h2>
-        <div class="form-grid">
-          {% for name in 'data_firma anno durata rinnovo data_ultimo_rinnovo data_fine_prevista'|split:' ' %}
-            {% with field=form|get_field:name %}
-              <div class="form-group">
-                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-              </div>
-            {% endwith %}
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h2 class="form-section__title">Numeri</h2>
-        <div class="form-grid">
-          {% for name in 'numero_progetti numero_partecipanti'|split:' ' %}
-            {% with field=form|get_field:name %}
-              <div class="form-group">
-                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-              </div>
-            {% endwith %}
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="form-section">
-        <h2 class="form-section__title">Contatti & Drive</h2>
-        <div class="form-grid">
-          {% with field=form.contatti %}
-            <div class="form-group form-group--full">
+          {% for field in fields %}
+            <div class="form-group{% if field.name == 'contatti' or field.name == 'vantaggi_partner' %} form-group--full{% endif %}">
               <label for="{{ field.id_for_label }}">{{ field.label }}</label>
               {{ field }}
               {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
               {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
             </div>
-          {% endwith %}
-
-          {% for name in 'cartella_sul_drive url_cartella'|split:' ' %}
-            {% with field=form|get_field:name %}
-              <div class="form-group">
-                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-                {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-              </div>
-            {% endwith %}
           {% endfor %}
         </div>
       </div>
-
-      <div class="form-section">
-        <h2 class="form-section__title">Vantaggi & Compenso</h2>
-        <div class="form-grid">
-          {% with field=form.vantaggi_partner %}
-            <div class="form-group form-group--full">
-              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-              {{ field }}
-              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-            </div>
-          {% endwith %}
-
-          {% with field=form.compenso_economico %}
-            <div class="form-group">
-              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-              {{ field }}
-              {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
-              {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
-            </div>
-          {% endwith %}
-        </div>
-      </div>
+      {% endfor %}
 
       <div class="form-actions">
         <a href="{% url 'partnerships' %}" class="btn-action">Annulla</a>

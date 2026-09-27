@@ -12,12 +12,13 @@ django.setup()
 from dashboard.models import (  # noqa: E402
     Eventi,
     Formazioni,
+    Lead,
     Partnership,
     Progetti,
     Soci,
 )
 
-for _m in (Eventi, Formazioni, Partnership, Progetti, Soci):
+for _m in (Eventi, Formazioni, Lead, Partnership, Progetti, Soci):
     _m._meta.managed = True
 
 # Workaround per `%%` in db_column: il quirk di formatting del schema editor

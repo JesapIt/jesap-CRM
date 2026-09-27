@@ -1,5 +1,8 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
+
+DEV_PASSWORD = 'jesap2026'
 
 
 class Command(BaseCommand):
@@ -8,13 +11,17 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--username', default='admin')
         parser.add_argument('--email', default='admin@jesap.it')
-        parser.add_argument('--password', default='jesap2026')
+        parser.add_argument('--password', default=DEV_PASSWORD)
 
     def handle(self, *args, **opts):
         User = get_user_model()
         username = opts['username']
         email = opts['email']
         password = opts['password']
+        if password == DEV_PASSWORD and not settings.DEBUG:
+            raise CommandError(
+                "Password di sviluppo non ammessa con DEBUG=False: passa --password."
+            )
 
         user, created = User.objects.get_or_create(
             username=username,

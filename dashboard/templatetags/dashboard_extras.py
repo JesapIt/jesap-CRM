@@ -1,6 +1,18 @@
 from django import template
 
+from dashboard.utils.parsing import format_eur, parse_money
+
 register = template.Library()
+
+
+@register.filter
+def eur(value):
+    """'€ 1234,5' / '1.234,56' / '1234.5' → '1.234,50 €'. Testo non numerico invariato."""
+    try:
+        amount = parse_money(value)
+    except ValueError:
+        return value
+    return format_eur(amount) if amount is not None else value
 
 
 @register.filter

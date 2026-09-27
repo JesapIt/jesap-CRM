@@ -19,6 +19,7 @@
 - [Funzionalità](#funzionalità)
 - [Stack tecnologico](#stack-tecnologico)
 - [Architettura](#architettura)
+- [Avvio in locale](#avvio-in-locale)
 - [Workflow di sviluppo](#workflow-di-sviluppo-consigliato)
 - [Deployment](#deployment)
 - [Roadmap](#roadmap)
@@ -172,6 +173,26 @@ Tutto integrato con **sincronizzazione bidirezionale Google Sheets ↔ Supabase*
 - **Source of truth distribuita**: Google Sheets per data entry, Supabase per source of truth runtime, Django per business logic
 - **Stateless app**: nessuna sessione su disco, scaling orizzontale Railway-ready
 - **Fail-fast in prod**: settings.py lancia `ImproperlyConfigured` se mancano env vars critiche
+
+---
+
+## Avvio in locale
+
+Senza `.env` il progetto usa **SQLite** (`db.sqlite3`) ed email stampate in console: nessun accesso a Supabase.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt pytest pytest-django
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py setup_local_db --demo   # tabelle Supabase (managed=False) + dati demo
+.venv/bin/python manage.py bootstrap_admin          # superuser di sviluppo (solo DEBUG=True)
+.venv/bin/python manage.py runserver
+```
+
+Poi apri <http://127.0.0.1:8000/>. Test: `.venv/bin/python -m pytest`.
+
+> In SQLite `valore_ponderato` e `alert_follow_up` delle lead restano vuoti: li calcolano colonna GENERATED e trigger di Postgres.
+> Per puntare a Supabase imposta `DATABASE_URL` nel `.env` — attenzione: è il database di produzione.
 
 ---
 

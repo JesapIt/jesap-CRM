@@ -23,11 +23,12 @@ urlpatterns = [
     path('progetti/<str:pk>/elimina/', views.progetto_delete, name='progetto_delete'),
     
     # --- CRUD de Partnerships ---
+    # PK = nome della partnership: può contenere "/" → converter `path`.
     path('partnerships/nuova/', views.partnership_create, name='partnership_create'),
     path('partnerships/nuova/<str:kind>/', views.partnership_create, name='partnership_create_kind'),
-    path('partnerships/<str:pk>/modifica/', views.partnership_update, name='partnership_update'),
-    path('partnerships/<str:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
-    path('partnerships/<str:pk>/sposta/', views.partnership_change_status, name='partnership_change_status'),
+    path('partnerships/<path:pk>/modifica/', views.partnership_update, name='partnership_update'),
+    path('partnerships/<path:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
+    path('partnerships/<path:pk>/sposta/', views.partnership_change_status, name='partnership_change_status'),
 
     # Soci (read-only: write avviene via sync Sheets -> Supabase)
     path('soci/', views.soci, name='soci'),
@@ -49,7 +50,8 @@ urlpatterns = [
         views.CustomPasswordResetView.as_view(
             form_class=CaseInsensitivePasswordResetForm,
             template_name='dashboard/password_reset_form.html',
-            email_template_name='registration/password_reset_email.html',
+            email_template_name='registration/password_reset_email.txt',
+            html_email_template_name='registration/password_reset_email.html',
             subject_template_name='registration/password_reset_subject.txt',
             from_email=None,
         ),

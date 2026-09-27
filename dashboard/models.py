@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime
+from datetime import date
 
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -8,15 +8,12 @@ from django.db import models
 from django.db.models import Max
 
 from . import choices as ch
+from .utils.parsing import parse_date_text
 
 
 def _parse_iso_date(value):
-    if value in (None, ''):
-        return None
-    try:
-        return datetime.strptime(str(value).strip(), '%Y-%m-%d').date()
-    except (TypeError, ValueError):
-        return None
+    # Il sync Sheets scrive DD/MM/YYYY, la UI YYYY-MM-DD: accetta entrambi.
+    return parse_date_text(value)
 
 
 def _slug_for_email(value):
@@ -132,6 +129,9 @@ class Progetti(models.Model):
             self.codice_progetto = generate_codice_progetto(
                 self.nome_progetto, self.data_inizio,
             )
+            # Codice appena generato: su collisione deve fallire, non UPDATE-are
+            # silenziosamente il progetto esistente.
+            kwargs['force_insert'] = True
         super().save(*args, **kwargs)
 
 
@@ -500,6 +500,28 @@ class Lead(models.Model):
 
     def __str__(self):
         return f"{self.lead_id} — {self.azienda or '(no azienda)'}"
+
+    # Colonne scritte solo da Postgres (GENERATED ALWAYS / trigger / DEFAULT now()).
+    # `editable=False` le nasconde dai form ma Django le includerebbe comunque
+    # in INSERT/UPDATE → "cannot insert a non-DEFAULT value" / NOT NULL violation.
+    DB_MANAGED_FIELDS = frozenset({
+        'valore_ponderato', 'alert_follow_up', 'ultimo_aggiornamento', 'created_at',
+    })
+
+    def _do_insert(self, manager, using, fields, returning_fields, raw):
+        fields = [
+            f for f in fields
+            if f.name not in self.DB_MANAGED_FIELDS
+            # NULL esplicito bypasserebbe DEFAULT CURRENT_DATE
+            and not (f.name == 'data_creazione' and self.data_creazione is None)
+        ]
+        return super()._do_insert(manager, using, fields, returning_fields, raw)
+
+    def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
+        # storico_aggiornamenti: appeso dal trigger; riscriverlo perderebbe voci concorrenti
+        skip = self.DB_MANAGED_FIELDS | {'storico_aggiornamenti'}
+        values = [v for v in values if v[0].name not in skip]
+        return super()._do_update(base_qs, using, pk_val, values, update_fields, forced_update)
 
     # Helper proprietà per template
     @property

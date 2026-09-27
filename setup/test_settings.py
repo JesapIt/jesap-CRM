@@ -22,3 +22,10 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# I test girano senza `collectstatic`: niente manifest né STATIC_ROOT per WhiteNoise.
+STORAGES = {
+    **STORAGES,  # noqa: F405
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+MIDDLEWARE = [m for m in MIDDLEWARE if not m.startswith("whitenoise.")]  # noqa: F405

@@ -85,7 +85,7 @@ Quando si vuole togliere la dipendenza da un Gmail personale:
 ### Credenziali di servizio
 - `SUPABASE_URL`: `https://qftmtaifcuuhlarponmr.supabase.co`
 - `SUPABASE_KEY`: chiedi al user (service_role, mai anon)
-- `WEBHOOK_SECRET`: salvato nelle Script Properties del progetto "Raccolta dati associati" (account Workspace) — vecchio URL webhook è `https://script.google.com/a/macros/jesap.it/s/AKfycbwcFor08hBLGd9FihaOMuNjhzYvOPsml8t3uk9zgwEYJxZn2h0HNq.../exec?secret=9ba6a71ceb09d345da651feffb350817c9ad38c8d924e4ce`
+- `WEBHOOK_SECRET`: salvato nelle Script Properties del progetto "Raccolta dati associati" (account Workspace) — vecchio URL webhook è `https://script.google.com/a/macros/jesap.it/s/AKfycbwcFor08hBLGd9FihaOMuNjhzYvOPsml8t3uk9zgwEYJxZn2h0HNq.../exec?secret=<WEBHOOK_SECRET>`
 
 ### Webhook Supabase attuale
 - Nome: `soci_to_sheet`
