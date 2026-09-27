@@ -1,0 +1,71 @@
+{% extends "dashboard/recruitment/base.html" %}
+
+{% block tab_content %}
+<form method="post" id="rec-formset">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="rec-table-wrap">
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th class="sticky-col">Candidato</th>
+          <th>Area</th>
+          <th>Data</th>
+          <th>Ora</th>
+          <th>Link Meet</th>
+          <th>Recruiter HR</th>
+          <th>Recruiter tecnico</th>
+          <th title="Colloquio con responsabile/vice">Resp/Vice</th>
+          <th title="Il candidato ha confermato la presenza">Conferma</th>
+          <th>Presente</th>
+          <th>Durata</th>
+          <th>Soft</th>
+          <th>Hard</th>
+          <th title="Media soft + hard">Media ind.</th>
+          <th title="Media colloquio di gruppo">Media gruppo</th>
+          <th title="Media tra individuale e gruppo">Media tot.</th>
+          <th>Link scheda</th>
+          <th>Esito</th>
+          <th>Area probabile</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in righe %}
+        <tr class="{% if r.form.errors %}has-errors{% endif %}">
+          <td class="sticky-col">
+            {% for h in r.form.hidden_fields %}{{ h }}{% endfor %}
+            {% include "dashboard/recruitment/_cand_cell.html" %}
+            {% if r.colloquio.tipo == 'Seconda scelta' %}<div class="cand-sub" style="color:var(--brand);font-weight:700;">↪ Seconda scelta</div>{% endif %}
+          </td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.area %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.data %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.ora %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.link_meet %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.recruiter_hr %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.recruiter_tecnico %}</td>
+          <td style="text-align:center;">{{ r.form.con_resp_vice }}</td>
+          <td style="text-align:center;">{{ r.form.presenza_confermata }}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.presenza %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.durata_minuti %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.punteggio_soft %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.punteggio_hard %}</td>
+          <td class="num">{{ r.colloquio.media_individuale|default:"-" }}</td>
+          <td class="num muted">{{ r.c.media_gruppo|default:"-" }}</td>
+          <td class="num">{{ r.colloquio.media_colloqui|default:"-" }}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.link_scheda %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.esito %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.area_probabile %}</td>
+          <td>{% include "dashboard/recruitment/_email_cell.html" %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="20" style="text-align:center; padding:40px; color:#94A3B8;">Nessun candidato ammesso al colloquio individuale.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if righe %}
+    <div class="save-bar"><span class="hint" id="save-hint">Esito "Seconda scelta" → dopo il salvataggio compare una nuova riga per il colloquio nella seconda area</span><button type="submit" class="btn-primary">Salva modifiche</button></div>
+  {% endif %}
+</form>
+{% endblock %}

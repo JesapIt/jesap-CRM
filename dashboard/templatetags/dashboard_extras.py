@@ -96,3 +96,22 @@ def user_first_name(user):
             return parts[0].title()
 
     return 'Socio'
+
+@register.filter
+def can_access_credenziali(user):
+    """True se l'utente è CdA o responsabile (vedi dashboard/permissions.py)."""
+    from dashboard.permissions import can_access_credenziali as _check
+    return _check(user)
+
+
+@register.filter
+def is_http_url(value):
+    """Solo link http(s) diventano <a href>: blocca `javascript:` & co."""
+    return str(value or '').strip().lower().startswith(('http://', 'https://'))
+
+
+@register.filter
+def can_access_recruitment(user):
+    """True se l'utente può vedere la sezione Recruitment."""
+    from dashboard.permissions import can_access_recruitment as _check
+    return _check(user)

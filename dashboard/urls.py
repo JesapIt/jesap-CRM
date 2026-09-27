@@ -3,6 +3,7 @@ from django.urls import path
 
 from .forms import CaseInsensitivePasswordResetForm
 from . import views
+from .recruitment import views as rec
 
 urlpatterns = [
     # Healthcheck (Railway)
@@ -29,6 +30,33 @@ urlpatterns = [
     path('partnerships/<path:pk>/modifica/', views.partnership_update, name='partnership_update'),
     path('partnerships/<path:pk>/elimina/', views.partnership_delete, name='partnership_delete'),
     path('partnerships/<path:pk>/sposta/', views.partnership_change_status, name='partnership_change_status'),
+
+    # --- Task (tutti i soci loggati) ---
+    path('task/', views.tasks, name='tasks'),
+    path('task/nuova/', views.task_create, name='task_create'),
+    path('task/<int:pk>/modifica/', views.task_update, name='task_update'),
+    path('task/<int:pk>/elimina/', views.task_delete, name='task_delete'),
+    path('task/<int:pk>/stato/', views.task_set_stato, name='task_set_stato'),
+
+    # --- Credenziali (solo CdA + responsabili) ---
+    path('credenziali/', views.credenziali, name='credenziali'),
+    path('credenziali/nuova/', views.credenziale_create, name='credenziale_create'),
+    path('credenziali/<int:pk>/modifica/', views.credenziale_update, name='credenziale_update'),
+    path('credenziali/<int:pk>/elimina/', views.credenziale_delete, name='credenziale_delete'),
+    path('credenziali/<int:pk>/rivela/', views.credenziale_reveal, name='credenziale_reveal'),
+
+    # --- Recruitment (CdA + Head of + autorizzati) ---
+    path('recruitment/', rec.recruitment_home, name='rec_home'),
+    path('recruitment/sessioni/nuova/', rec.sessione_create, name='rec_sessione_create'),
+    path('recruitment/accessi/', rec.accessi, name='rec_accessi'),
+    path('recruitment/api/candidature/', rec.api_candidature, name='rec_api_candidature'),
+    path('recruitment/candidato/<int:pk>/', rec.candidato_detail, name='rec_candidato'),
+    path('recruitment/gruppi/<int:pk>/', rec.gruppo_update, name='rec_gruppo_update'),
+    path('recruitment/<int:sessione_id>/impostazioni/', rec.sessione_update, name='rec_sessione_update'),
+    path('recruitment/<int:sessione_id>/gruppi/nuovo/', rec.gruppo_create, name='rec_gruppo_create'),
+    path('recruitment/<int:sessione_id>/candidati/nuovo/', rec.candidato_create, name='rec_candidato_create'),
+    path('recruitment/<int:sessione_id>/email/<str:fase>/', rec.recruitment_invia_email, name='rec_invia_email'),
+    path('recruitment/<int:sessione_id>/<str:tab>/', rec.recruitment_tab, name='rec_tab'),
 
     # Soci (read-only: write avviene via sync Sheets -> Supabase)
     path('soci/', views.soci, name='soci'),

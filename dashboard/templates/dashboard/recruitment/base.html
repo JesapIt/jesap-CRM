@@ -1,0 +1,171 @@
+{% extends "dashboard/base_figma.html" %}
+
+{% block title %}JESAP Gestionale - Recruitment{% endblock %}
+
+{% block head %}
+<style>
+  .rec-page .rec-wrap { max-width: 1320px; margin: 0 auto; padding: 0 22px; box-sizing: border-box; }
+  .rec-topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .rec-session { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rec-session select { height: 38px; border-radius: 8px; border: 2px solid var(--soft-line); padding: 0 12px; font-family: inherit; font-size: 15px; font-weight: 700; color: var(--brand); background: #fff; }
+  .badge-open { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; background: #DCFCE7; color: #15803D; }
+  .badge-closed { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; background: #F1F5F9; color: #64748B; }
+  .rec-links { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn-primary { background-color: #10B981; color: #fff; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border: none; cursor: pointer; transition: 0.2s; font-family: inherit; font-size: 14px; }
+  .btn-primary:hover { background-color: #059669; }
+  .btn-primary[disabled] { background: #CBD5E1; cursor: not-allowed; }
+  .btn-brand { background: var(--brand); color: #fff; padding: 8px 16px; border-radius: 8px; border: none; font-weight: 600; font-family: inherit; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-brand:hover { background: var(--brand-ink); }
+  .btn-action { background-color: #F8FAFC; color: #475569; padding: 7px 12px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px; border: 1px solid #E2E8F0; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-family: inherit; }
+  .btn-action:hover { background-color: #E2E8F0; color: #1E293B; }
+  .btn-action.danger { color: #EF4444; background-color: #FEF2F2; border-color: #FCA5A5; }
+
+  /* Funnel */
+  .funnel { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+  .funnel__step { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 10px 14px; position: relative; }
+  .funnel__label { font-size: 11px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+  .funnel__value { font-size: 24px; font-weight: 700; color: #0F172A; margin-top: 2px; }
+  .funnel__step:last-child { border-color: #86EFAC; background: #F0FDF4; }
+  .funnel__step:last-child .funnel__value { color: #15803D; }
+  @media (max-width: 900px) { .funnel { grid-template-columns: repeat(2, 1fr); } }
+
+  .tab-button { padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600; background-color: #F1F5F9; color: #64748B; transition: all 0.2s ease; font-size: 13px; }
+  .tab-button.active { background-color: var(--brand); color: #fff; }
+  .rec-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #E2E8F0; padding-bottom: 15px; flex-wrap: wrap; }
+
+  .messages { list-style: none; padding: 0; margin: 0 0 16px; }
+  .messages li { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+  .messages li.error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+  .messages li.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .messages li.warning, .messages li.info { background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }
+
+  /* Toolbar + email */
+  .rec-toolbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .rec-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .filter-input { padding: 8px 12px; border: 1px solid #E5E7EB; border-radius: 8px; font-size: 14px; font-family: inherit; }
+  .email-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+  .email-bar form { margin: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .email-bar small { font-size: 11px; color: #B45309; }
+
+  /* Tabella editabile */
+  .rec-table-wrap { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; overflow: auto; max-height: 72vh; }
+  .rec-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+  .rec-table th, .rec-table td { padding: 8px 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid #F1F5F9; white-space: nowrap; }
+  .rec-table thead th { position: sticky; top: 0; z-index: 2; font-size: 11px; text-transform: uppercase; color: #64748B; letter-spacing: 0.04em; background: #F8FAFC; border-bottom: 1px solid #E5E7EB; }
+  .rec-table .sticky-col { position: sticky; left: 0; z-index: 1; background: #fff; min-width: 190px; box-shadow: 1px 0 0 #E5E7EB; }
+  .rec-table thead .sticky-col { z-index: 3; background: #F8FAFC; }
+  .rec-table tbody tr:hover td, .rec-table tbody tr:hover .sticky-col { background: #FAF5FF; }
+  .rec-table tr.has-errors td { background: #FEF2F2; }
+  .cand-name { font-weight: 700; color: var(--ink); text-decoration: none; }
+  .cand-name:hover { color: var(--brand); text-decoration: underline; }
+  .cand-sub { font-size: 11px; color: #94A3B8; }
+  .cell-input { height: 30px; border: 1px solid #E2E8F0; border-radius: 6px; padding: 0 6px; font-family: inherit; font-size: 13px; background: #fff; max-width: 170px; box-sizing: border-box; }
+  .cell-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(138, 59, 134, 0.12); }
+  input[type=number].cell-input { width: 70px; }
+  input[type=text].cell-input { width: 150px; }
+  input[type=date].cell-input { width: 130px; }
+  input[type=time].cell-input { width: 90px; }
+  .cell-error { color: #b91c1c; font-size: 11px; white-space: normal; max-width: 170px; }
+  .num { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .muted { color: #94A3B8; }
+
+  .email-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .email-inviata { background: #DCFCE7; color: #15803D; }
+  .email-da_inviare { background: #FEF3C7; color: #B45309; }
+  .email-bloccata { background: #FEE2E2; color: #B91C1C; }
+  .email-nessuna { color: #CBD5E1; }
+
+  .save-bar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: rgba(255,255,255,0.96); border-top: 1px solid #E5E7EB; padding: 12px 16px; margin-top: 0; z-index: 4; }
+  .save-bar .hint { font-size: 13px; color: #64748B; }
+  .save-bar .dirty { color: #B45309; font-weight: 700; }
+</style>
+{% block rec_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<section class="page rec-page">
+  <header class="page__header">
+    <h1 class="page__title">RECRUITMENT</h1>
+  </header>
+
+  <div class="rec-wrap">
+    <div class="rec-topbar">
+      <div class="rec-session">
+        <select aria-label="Sessione di recruitment" onchange="if (this.value) window.location = this.value;">
+          {% for s in sessioni %}
+            <option value="{% url 'rec_tab' s.pk tab|default:'candidature' %}" {% if s.pk == sessione.pk %}selected{% endif %}>{{ s.nome }}</option>
+          {% endfor %}
+        </select>
+        {% if sessione.aperta %}<span class="badge-open" title="Le nuove candidature dal form arrivano qui">Aperta</span>{% else %}<span class="badge-closed">Chiusa</span>{% endif %}
+      </div>
+      <div class="rec-links">
+        <a class="btn-action" href="{% url 'rec_sessione_update' sessione.pk %}">Impostazioni ed email</a>
+        <a class="btn-action" href="{% url 'rec_sessione_create' %}">+ Nuova sessione</a>
+        {% if can_manage %}<a class="btn-action" href="{% url 'rec_accessi' %}">Accessi</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="funnel">
+      {% for label, n in funnel %}
+        <div class="funnel__step"><div class="funnel__label">{{ label }}</div><div class="funnel__value">{{ n }}</div></div>
+      {% endfor %}
+    </div>
+
+    <nav class="rec-tabs">
+      {% for slug, label in tabs %}
+        <a href="{% url 'rec_tab' sessione.pk slug %}" class="tab-button {% if tab == slug %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="rec-toolbar">
+      <form method="get" class="rec-filter">
+        <input type="search" name="q" value="{{ q }}" placeholder="Cerca nome, cognome, email..." class="filter-input" style="min-width:240px;">
+        <select name="area" class="filter-input">
+          <option value="">Tutte le aree</option>
+          {% for a in aree %}<option value="{{ a }}" {% if a == area %}selected{% endif %}>{{ a }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="sort__button"><span>Filtra</span></button>
+        {% if q or area %}<a href="{% url 'rec_tab' sessione.pk tab %}" class="btn-action">Reset</a>{% endif %}
+      </form>
+
+      <div class="email-bar">
+        {% block toolbar_extra %}{% endblock %}
+        {% for a in email_azioni %}
+          <form method="post" action="{% url 'rec_invia_email' sessione.pk a.fase %}"
+                onsubmit="return confirm('Inviare {{ a.pronti }} email ({{ a.label|lower }})? Le modifiche non salvate nella tabella andranno perse.');">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit" class="btn-brand" {% if not a.pronti %}disabled style="opacity:.45;cursor:not-allowed;"{% endif %}>
+              ✉ Invia {{ a.label|lower }} ({{ a.pronti }})
+            </button>
+            {% for motivo, n in a.bloccati.items %}<small>{{ n }} in attesa: {{ motivo }}</small>{% endfor %}
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% block tab_content %}{% endblock %}
+  </div>
+</section>
+
+<script>
+  // Avvisa se si esce con modifiche non salvate nella tabella
+  (function () {
+    var form = document.getElementById('rec-formset');
+    if (!form) return;
+    var dirty = false;
+    var hint = document.getElementById('save-hint');
+    form.addEventListener('input', function () { dirty = true; if (hint) { hint.textContent = 'Modifiche non salvate'; hint.classList.add('dirty'); } });
+    form.addEventListener('change', function () { dirty = true; if (hint) { hint.textContent = 'Modifiche non salvate'; hint.classList.add('dirty'); } });
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  })();
+</script>
+{% endblock %}

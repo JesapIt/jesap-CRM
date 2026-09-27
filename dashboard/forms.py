@@ -6,12 +6,14 @@ from random import randint
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
-from django.core.validators import DecimalValidator
+from django.core.exceptions import ValidationError
+from django.core.validators import DecimalValidator, URLValidator
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import choices as ch
-from .models import Lead, Partnership, Progetti
+from .models import Credenziale, Lead, Partnership, Progetti, Soci, Task
 from .utils.parsing import parse_date_text, parse_money
 
 
@@ -926,3 +928,144 @@ class CaseInsensitivePasswordResetForm(PasswordResetForm):
         return (
             user for user in active_users if user.has_usable_password()
         )
+
+
+class TaskForm(forms.ModelForm):
+    area = forms.ChoiceField(
+        choices=ch.TASK_AREA_CHOICES,
+        label='Area',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    stato = forms.ChoiceField(
+        choices=ch.TASK_STATO_CHOICES,
+        label='Stato',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    priorita = forms.ChoiceField(
+        choices=ch.TASK_PRIORITA_CHOICES,
+        required=False,
+        label='Priorità',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    effort = forms.ChoiceField(
+        choices=ch.TASK_EFFORT_CHOICES,
+        required=False,
+        label='Effort',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    assegnatari = forms.ModelMultipleChoiceField(
+        queryset=Soci.objects.none(),
+        required=False,
+        label='Assegnatari',
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = Task
+        fields = [
+            'titolo', 'area', 'competenza', 'stato', 'priorita', 'effort',
+            'scadenza', 'assegnatari', 'altri_assegnatari', 'descrizione', 'link',
+        ]
+        labels = {
+            'titolo': 'Titolo',
+            'competenza': 'Competenza',
+            'scadenza': 'Scadenza',
+            'altri_assegnatari': 'Altri assegnatari (non in SOCI)',
+            'descrizione': 'Descrizione',
+            'link': 'Link',
+        }
+        widgets = {
+            'titolo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Aggiornare foglio soci'}),
+            'competenza': forms.TextInput(attrs={'class': 'form-control', 'list': 'competenze-suggerite', 'placeholder': 'Es: Data, Automations'}),
+            'scadenza': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'altri_assegnatari': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nomi separati da virgola'}),
+            'descrizione': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'link': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Un link per riga'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Soci attivi + eventuali assegnatari già presenti (anche se non più associati)
+        visibili = Q(status__iexact='Associato')
+        if self.instance.pk:
+            visibili |= Q(pk__in=self.instance.assegnatari.values('pk'))
+        field = self.fields['assegnatari']
+        field.queryset = Soci.objects.filter(visibili).order_by('nome_e_cognome')
+        field.label_from_instance = (
+            lambda s: ' · '.join(p for p in (s.nome_e_cognome or f'Socio #{s.pk}', s.area_di_appartenenza) if p)
+        )
+
+    def clean_competenza(self):
+        raw = self.cleaned_data.get('competenza') or ''
+        seen = []
+        for c in raw.split(','):
+            c = c.strip()
+            if c and c.lower() not in (s.lower() for s in seen):
+                seen.append(c)
+        return ', '.join(seen)
+
+    def clean_link(self):
+        raw = self.cleaned_data.get('link') or ''
+        links = [l.strip() for l in raw.splitlines() if l.strip()]
+        validate = URLValidator(schemes=['http', 'https'])
+        for l in links:
+            try:
+                validate(l)
+            except ValidationError:
+                raise forms.ValidationError(f'Link non valido: {l[:80]} (serve http:// o https://, uno per riga).')
+        return '\n'.join(links)
+
+
+class CredenzialeForm(forms.ModelForm):
+    area = forms.ChoiceField(
+        choices=ch.CREDENZIALI_AREA_CHOICES,
+        label='Area',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    password = forms.CharField(
+        required=False,
+        strip=False,
+        label='Password',
+        widget=forms.PasswordInput(render_value=False, attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
+    )
+    note = forms.CharField(
+        required=False,
+        label='Note (cifrate)',
+        help_text='Es. codici di recupero, 2FA, istruzioni di accesso.',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'autocomplete': 'off'}),
+    )
+
+    class Meta:
+        model = Credenziale
+        fields = ['area', 'servizio', 'url', 'username']
+        labels = {
+            'servizio': 'Servizio / account',
+            'url': 'Link di accesso',
+            'username': 'Utente / email',
+        }
+        widgets = {
+            'servizio': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Canva, LinkedIn, Google Workspace'}),
+            'url': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://...'}),
+            'username': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields['password'].help_text = 'Lascia vuoto per mantenere la password attuale.'
+            self.initial['note'] = self.instance.note
+        else:
+            self.fields['password'].required = True
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        password = self.cleaned_data.get('password')
+        if password:
+            instance.password = password
+        # Ri-cifra le note solo se cambiate (token Fernet diverso a ogni cifratura)
+        note = self.cleaned_data.get('note') or ''
+        if note != (self.initial.get('note') or ''):
+            instance.note = note
+        if commit:
+            instance.save()
+        return instance

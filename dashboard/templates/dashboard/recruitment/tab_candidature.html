@@ -1,0 +1,54 @@
+{% extends "dashboard/recruitment/base.html" %}
+
+{% block toolbar_extra %}
+  <a class="btn-action" href="{% url 'rec_candidato_create' sessione.pk %}" style="height:36px;">+ Candidato manuale</a>
+{% endblock %}
+
+{% block tab_content %}
+<form method="post" id="rec-formset">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="rec-table-wrap">
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th class="sticky-col">Candidato</th>
+          <th>Aree</th>
+          <th>Facoltà / corso</th>
+          <th>CV</th>
+          <th>Candidatura</th>
+          <th>Esito screening</th>
+          <th>Note</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in righe %}
+        <tr class="{% if r.form.errors %}has-errors{% endif %}">
+          <td class="sticky-col">
+            {% for h in r.form.hidden_fields %}{{ h }}{% endfor %}
+            {% include "dashboard/recruitment/_cand_cell.html" %}
+            {% if r.conferma %}<div class="cand-sub" style="color:#15803D;">✓ conferma ricezione inviata</div>{% endif %}
+          </td>
+          <td>{{ r.c.area_1|default:"-" }}{% if r.c.area_2 %} <span class="muted">/ {{ r.c.area_2 }}</span>{% endif %}</td>
+          <td style="white-space:normal; min-width:200px; max-width:260px;">{{ r.c.facolta|default:"-" }}<div class="cand-sub">{{ r.c.corso_laurea }}</div></td>
+          <td>{% if r.c.cv_url %}<a href="{{ r.c.cv_url }}" target="_blank" rel="noopener noreferrer">Apri CV ↗</a>{% else %}<span class="muted">-</span>{% endif %}</td>
+          <td>{{ r.c.data_candidatura|date:"d/m/Y"|default:"-" }}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.esito_screening %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.note %}</td>
+          <td>{% include "dashboard/recruitment/_email_cell.html" %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" style="text-align:center; padding:40px; color:#94A3B8; white-space:normal;">
+          Nessuna candidatura{% if q or area %} con questi filtri{% endif %}.
+          {% if not q and not area %}<br>Arrivano automaticamente dal form del sito quando la sessione è <strong>aperta</strong>, oppure puoi aggiungerle a mano.{% endif %}
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if righe %}
+    <div class="save-bar"><span class="hint" id="save-hint">{{ righe|length }} candidati</span><button type="submit" class="btn-primary">Salva modifiche</button></div>
+  {% endif %}
+</form>
+{% endblock %}

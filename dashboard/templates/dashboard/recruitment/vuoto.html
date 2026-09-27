@@ -1,0 +1,18 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - Recruitment{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title">RECRUITMENT</h1></header>
+  <div class="form-container">
+    <div class="form-card" style="text-align:center;">
+      <h2 class="form-section__title">Nessuna sessione di recruitment</h2>
+      <p>Crea la prima sessione (es. <em>Spring REC 26</em>): le candidature del form arriveranno lì finché è aperta.</p>
+      <div class="form-actions" style="justify-content:center;">
+        <a class="btn-primary" href="{% url 'rec_sessione_create' %}">Crea sessione</a>
+        {% if can_manage %}<a class="btn-action" href="{% url 'rec_accessi' %}">Gestisci accessi</a>{% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

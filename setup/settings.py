@@ -262,6 +262,26 @@ print(f"[settings:email] backend={EMAIL_BACKEND} resend_key={'<SET>' if RESEND_A
       file=sys.stderr, flush=True)
 LOGOUT_REDIRECT_URL = "login"
 
+# Area Credenziali: chiave Fernet (vedi dashboard/crypto.py). Mai nel DB.
+# Assente → il resto del CRM funziona, l'area Credenziali mostra un errore.
+CREDENTIALS_ENCRYPTION_KEY = _env('CREDENTIALS_ENCRYPTION_KEY', '')
+print(f"[settings:credenziali] encryption_key={'<SET>' if CREDENTIALS_ENCRYPTION_KEY else '<EMPTY>'}",
+      file=sys.stderr, flush=True)
+
+# Recruitment
+# Token condiviso con l'Apps Script del foglio risposte (webhook candidature).
+RECRUITMENT_WEBHOOK_TOKEN = _env('RECRUITMENT_WEBHOOK_TOKEN', '')
+# Mittente / risposte delle email ai candidati (vuoto → DEFAULT_FROM_EMAIL, nessun reply-to).
+RECRUITMENT_FROM_EMAIL = _env('RECRUITMENT_FROM_EMAIL', '')
+RECRUITMENT_REPLY_TO = _env('RECRUITMENT_REPLY_TO', '')
+# Invii in blocco: max email per click + pausa tra un invio e l'altro (rate limit Resend).
+RECRUITMENT_EMAIL_BATCH = 40
+RECRUITMENT_EMAIL_PAUSE = 0.5
+# Le tabelle recruitment si salvano in blocco (una riga = ~15 campi).
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
+print(f"[settings:recruitment] webhook_token={'<SET>' if RECRUITMENT_WEBHOOK_TOKEN else '<EMPTY>'} "
+      f"reply_to={RECRUITMENT_REPLY_TO or '<EMPTY>'}", file=sys.stderr, flush=True)
+
 # Logging: stdout (Railway raccoglie automaticamente)
 LOGGING = {
     'version': 1,

@@ -1,0 +1,45 @@
+{% extends "dashboard/recruitment/base.html" %}
+
+{% block tab_content %}
+<form method="post" id="rec-formset">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="rec-table-wrap">
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th class="sticky-col">Candidato</th>
+          <th>Area</th>
+          <th>Conferma area</th>
+          <th>Mail JESAP creata</th>
+          <th>Form compilato</th>
+          <th>Gruppo Telegram</th>
+          <th>Esito finale</th>
+          <th>Settimane prolung.</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in righe %}
+        <tr class="{% if r.form.errors %}has-errors{% endif %}">
+          <td class="sticky-col">{% for h in r.form.hidden_fields %}{{ h }}{% endfor %}{% include "dashboard/recruitment/_cand_cell.html" %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.area_prova %}</td>
+          <td style="text-align:center;">{{ r.form.conferma_area }}</td>
+          <td style="text-align:center;">{{ r.form.mail_jesap_creata }}</td>
+          <td style="text-align:center;">{{ r.form.form_compilato }}</td>
+          <td style="text-align:center;">{{ r.form.gruppo_telegram }}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.esito_finale %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.settimane_prolungamento %}</td>
+          <td>{% include "dashboard/recruitment/_email_cell.html" %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="9" style="text-align:center; padding:40px; color:#94A3B8;">Nessun candidato ammesso al periodo di prova.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if righe %}
+    <div class="save-bar"><span class="hint" id="save-hint">{{ righe|length }} in periodo di prova</span><button type="submit" class="btn-primary">Salva modifiche</button></div>
+  {% endif %}
+</form>
+{% endblock %}

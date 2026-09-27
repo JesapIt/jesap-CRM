@@ -6,7 +6,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 
 from .audit import diff, snapshot, write_log
-from .models import Lead, Partnership, Progetti
+from .models import Credenziale, Lead, Partnership, Progetti, Task
 
 
 @receiver(post_save, sender=User)
@@ -36,7 +36,7 @@ def send_welcome_email(sender, instance, created, **kwargs):
     msg.send(fail_silently=True)
 
 
-AUDITED_MODELS = (Lead, Partnership, Progetti)
+AUDITED_MODELS = (Lead, Partnership, Progetti, Task, Credenziale)
 
 
 @receiver(pre_save)

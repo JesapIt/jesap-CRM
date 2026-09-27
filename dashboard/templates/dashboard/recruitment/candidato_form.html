@@ -1,0 +1,22 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - Nuovo candidato{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title">NUOVO CANDIDATO</h1></header>
+  <div class="form-container">
+    <a class="back-link" href="{% url 'rec_tab' sessione.pk 'candidature' %}">← {{ sessione.nome }}</a>
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <p class="field-help" style="margin-top:0;">Per candidature arrivate fuori dal form. Nessuna email automatica viene inviata.</p>
+      <div class="form-grid">
+        {% for field in form %}{% if field.name == 'motivazione' or field.name == 'note' %}{% include "dashboard/recruitment/_field.html" with full=1 %}{% else %}{% include "dashboard/recruitment/_field.html" %}{% endif %}{% endfor %}
+      </div>
+      <div class="form-actions">
+        <a href="{% url 'rec_tab' sessione.pk 'candidature' %}" class="btn-action">Annulla</a>
+        <button type="submit" class="btn-primary">Aggiungi</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

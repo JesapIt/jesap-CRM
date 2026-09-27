@@ -1,0 +1,57 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - Accessi Recruitment{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title" style="font-size:40px;">ACCESSI RECRUITMENT</h1></header>
+  <div class="form-container">
+    <a class="back-link" href="{% url 'rec_home' %}">← Recruitment</a>
+    {% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <h2 class="form-section__title">Autorizza un socio</h2>
+      <p class="field-help" style="margin-top:-8px;">
+        {% if is_cda %}Come membro del CdA puoi autorizzare soci di qualsiasi area.{% else %}Puoi autorizzare i soci dell'area <strong>{{ area_manager }}</strong>.{% endif %}
+        Compaiono solo i soci già registrati al gestionale.
+      </p>
+      <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:280px;">{% include "dashboard/recruitment/_field.html" with field=form.utente %}</div>
+        <button type="submit" class="btn-primary">Autorizza</button>
+      </div>
+    </form>
+
+    <div class="form-card">
+      <h2 class="form-section__title">Autorizzati ({{ autorizzati|length }})</h2>
+      <table class="mini-table">
+        <thead><tr><th>Socio</th><th>Area</th><th>Email</th><th></th></tr></thead>
+        <tbody>
+          {% for u, s, puo_revocare in autorizzati %}
+            <tr>
+              <td>{{ s.nome_e_cognome }}</td><td>{{ s.area_di_appartenenza|default:"-" }}</td><td>{{ u.email }}</td>
+              <td style="text-align:right;">
+                {% if puo_revocare %}
+                  <form method="post" style="margin:0;" onsubmit="return confirm('Revocare l\'accesso a {{ s.nome_e_cognome|escapejs }}?');">
+                    {% csrf_token %}<input type="hidden" name="azione" value="revoca"><input type="hidden" name="utente" value="{{ u.pk }}">
+                    <button type="submit" class="btn-danger" style="height:32px; font-size:13px;">Revoca</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4" class="muted">Nessun socio autorizzato oltre a CdA e responsabili.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-card">
+      <h2 class="form-section__title">Accesso sempre attivo (CdA e Head of)</h2>
+      <table class="mini-table">
+        <thead><tr><th>Socio</th><th>Ruolo</th><th>Area</th></tr></thead>
+        <tbody>{% for u, s in sempre %}<tr><td>{{ s.nome_e_cognome }}</td><td>{{ s.ruolo }}</td><td>{{ s.area_di_appartenenza|default:"-" }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">—</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

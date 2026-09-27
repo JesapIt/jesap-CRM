@@ -19,6 +19,8 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from . import choices as ch
@@ -28,8 +30,13 @@ from .forms import (
     NonFinalizzataForm,
     PartnershipFullForm,
     ProgettoForm,
+    CredenzialeForm,
+    TaskForm,
 )
-from .models import Lead, Partnership, Progetti, Soci, Socio
+from . import crypto
+from .audit import write_log
+from .models import AuditLog, Credenziale, Lead, Partnership, Progetti, Soci, Socio, Task
+from .permissions import can_access_credenziali, display_name, get_socio
 from .utils.parsing import parse_date_text, parse_money
 
 logger = logging.getLogger(__name__)
@@ -901,6 +908,349 @@ def partnership_change_status(request, pk):
     partnership.save(update_fields=['status_partnership'])
     messages.success(request, f"Spostata in '{new_status}'.")
     return _redirect_to_tab(_kind_for_status(new_status))
+
+
+# ============================================================
+# TASK — tutti i soci loggati vedono e modificano tutto
+# ============================================================
+
+TASK_AREA_TABS = {
+    "da": "D&A",
+    "bd": "BD",
+    "hr": "HR",
+    "mc": "M&C",
+}
+TASK_AREA_TO_TAB = {v: k for k, v in TASK_AREA_TABS.items()}
+TASK_TAB_MIE = "mie"
+TASK_STATO_APERTE = "aperte"
+
+_TASK_PRIORITA_RANK = {v: i for i, v in enumerate(ch.TASK_PRIORITA_VALUES)}
+_TASK_STATO_RANK = {v: i for i, v in enumerate(ch.TASK_STATO_VALUES)}
+
+TASKS_SORT_MAP = {
+    "scadenza": "scadenza",
+    "titolo": "titolo",
+    "priorita": lambda t: _TASK_PRIORITA_RANK.get(t.priorita),
+    "stato": lambda t: _TASK_STATO_RANK.get(t.stato),
+    "creato_il": "creato_il",
+    "modificato_il": "modificato_il",
+}
+TASKS_SORT_DEFAULT = ("scadenza", "asc")
+
+
+def _tasks_url(area=None):
+    tab = TASK_AREA_TO_TAB.get(area, "")
+    return reverse("tasks") + (f"?tab={tab}" if tab else "")
+
+
+def _safe_next(request, fallback):
+    nxt = request.POST.get("next") or ""
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return nxt
+    return fallback
+
+
+@login_required(login_url="login")
+def tasks(request):
+    """
+    Task per area. Query params:
+      ?tab=mie|da|bd|hr|mc   (default: mie se l'utente è collegato a un socio)
+      ?q=...                 ricerca titolo / descrizione / competenza / assegnatari
+      ?stato=aperte|<stato>  default 'aperte' (esclude le completate); vuoto = tutte
+      ?scadute=1             solo scadute
+      ?sort=key&dir=asc|desc
+    """
+    socio = get_socio(request.user)
+    default_tab = TASK_TAB_MIE if socio else "da"
+    tab = request.GET.get("tab") or default_tab
+    if tab != TASK_TAB_MIE and tab not in TASK_AREA_TABS:
+        tab = default_tab
+
+    search_query = request.GET.get("q", "").strip()
+    stato_filter = request.GET.get("stato", TASK_STATO_APERTE).strip()
+    scadute_only = request.GET.get("scadute", "") == "1"
+
+    queryset = Task.objects.prefetch_related("assegnatari")
+    if tab == TASK_TAB_MIE:
+        queryset = queryset.filter(assegnatari=socio) if socio else queryset.none()
+    else:
+        queryset = queryset.filter(area=TASK_AREA_TABS[tab])
+
+    if search_query:
+        queryset = queryset.filter(
+            Q(titolo__icontains=search_query)
+            | Q(descrizione__icontains=search_query)
+            | Q(competenza__icontains=search_query)
+            | Q(altri_assegnatari__icontains=search_query)
+            | Q(assegnatari__nome_e_cognome__icontains=search_query)
+        ).distinct()
+
+    all_records = list(queryset)
+
+    # KPI sul tab corrente (prima dei filtri stato/scadute)
+    kpi = {
+        "da_iniziare": sum(1 for t in all_records if t.stato == ch.TASK_STATO_DA_INIZIARE),
+        "in_corso": sum(1 for t in all_records if t.stato == ch.TASK_STATO_IN_CORSO),
+        "scadute": sum(1 for t in all_records if t.scaduta),
+        "completate": sum(1 for t in all_records if t.is_completata),
+    }
+
+    if stato_filter == TASK_STATO_APERTE:
+        all_records = [t for t in all_records if not t.is_completata]
+    elif stato_filter in ch.TASK_STATO_VALUES:
+        all_records = [t for t in all_records if t.stato == stato_filter]
+    else:
+        stato_filter = ""
+    if scadute_only:
+        all_records = [t for t in all_records if t.scaduta]
+
+    sort_key, sort_dir = _read_sort_params(request, TASKS_SORT_MAP, TASKS_SORT_DEFAULT)
+    all_records, sort_key, sort_dir = _sort_records(
+        all_records, sort_key, sort_dir, TASKS_SORT_MAP, TASKS_SORT_DEFAULT
+    )
+
+    paginator = Paginator(all_records, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "dashboard/tasks.html", {
+        "tasks": page_obj,
+        "page_obj": page_obj,
+        "current_tab": tab,
+        "area_tabs": TASK_AREA_TABS,
+        "current_area": TASK_AREA_TABS.get(tab, ""),
+        "has_socio": socio is not None,
+        "search_query": search_query,
+        "stato_filter": stato_filter,
+        "scadute_only": scadute_only,
+        "stati": ch.TASK_STATO_VALUES,
+        "current_sort": sort_key,
+        "current_dir": sort_dir,
+        "kpi": kpi,
+    })
+
+
+def _competenze_suggerite():
+    valori = set()
+    for raw in Task.objects.exclude(competenza="").values_list("competenza", flat=True):
+        valori.update(c.strip() for c in raw.split(",") if c.strip())
+    return sorted(valori, key=str.lower)
+
+
+@login_required(login_url="login")
+def task_create(request):
+    if request.method == "POST":
+        form = TaskForm(request.POST)
+        if form.is_valid():
+            task = form.save(commit=False)
+            task.creato_da = task.modificato_da = display_name(request.user)
+            task.save()
+            form.save_m2m()
+            messages.success(request, "Task creata con successo!")
+            return redirect(_tasks_url(task.area))
+    else:
+        area = TASK_AREA_TABS.get(request.GET.get("tab", ""))
+        socio = get_socio(request.user)
+        form = TaskForm(initial={
+            "area": area or (socio.area_di_appartenenza if socio else ""),
+            "stato": ch.TASK_STATO_DA_INIZIARE,
+        })
+
+    return render(request, "dashboard/task_form.html", {
+        "form": form,
+        "azione": "Nuova",
+        "competenze_suggerite": _competenze_suggerite(),
+    })
+
+
+@login_required(login_url="login")
+def task_update(request, pk):
+    task = get_object_or_404(Task, pk=pk)
+
+    if request.method == "POST":
+        form = TaskForm(request.POST, instance=task)
+        if form.is_valid():
+            task = form.save(commit=False)
+            task.modificato_da = display_name(request.user)
+            task.save()
+            form.save_m2m()
+            messages.success(request, "Task aggiornata con successo!")
+            return redirect(_tasks_url(task.area))
+    else:
+        form = TaskForm(instance=task)
+
+    return render(request, "dashboard/task_form.html", {
+        "form": form,
+        "azione": "Modifica",
+        "task": task,
+        "competenze_suggerite": _competenze_suggerite(),
+    })
+
+
+@login_required(login_url="login")
+def task_delete(request, pk):
+    task = get_object_or_404(Task, pk=pk)
+
+    if request.method == "POST":
+        area = task.area
+        task.delete()
+        messages.success(request, "Task eliminata con successo!")
+        return redirect(_tasks_url(area))
+
+    return render(request, "dashboard/task_confirm_delete.html", {"task": task})
+
+
+@login_required(login_url="login")
+@require_POST
+def task_set_stato(request, pk):
+    """Cambio stato rapido dalla lista."""
+    task = get_object_or_404(Task, pk=pk)
+    nuovo = (request.POST.get("stato") or "").strip()
+    if nuovo not in ch.TASK_STATO_VALUES:
+        messages.error(request, "Stato non valido.")
+    elif nuovo != task.stato:
+        task.stato = nuovo
+        task.modificato_da = display_name(request.user)
+        task.save(update_fields=["stato", "modificato_da", "modificato_il"])
+        messages.success(request, f"'{task.titolo}' → {nuovo}.")
+    return redirect(_safe_next(request, _tasks_url(task.area)))
+
+
+# ============================================================
+# CREDENZIALI — solo CdA + responsabili (dashboard/permissions.py)
+# ============================================================
+
+CREDENZIALI_AREA_TABS = {
+    "generale": "Generale",
+    "da": "D&A",
+    "bd": "BD",
+    "hr": "HR",
+    "mc": "M&C",
+}
+CREDENZIALI_TAB_TUTTE = "tutte"
+
+
+def credenziali_access_required(view):
+    """Login + ruolo CdA/responsabile. 403 per gli altri. Mai in cache."""
+    @wraps(view)
+    def _wrapped(request, *args, **kwargs):
+        if not can_access_credenziali(request.user):
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+    return never_cache(login_required(_wrapped, login_url="login"))
+
+
+def _credenziali_url(area=None):
+    tab = next((k for k, v in CREDENZIALI_AREA_TABS.items() if v == area), "")
+    return reverse("credenziali") + (f"?tab={tab}" if tab else "")
+
+
+@credenziali_access_required
+def credenziali(request):
+    tab = request.GET.get("tab", CREDENZIALI_TAB_TUTTE)
+    if tab != CREDENZIALI_TAB_TUTTE and tab not in CREDENZIALI_AREA_TABS:
+        tab = CREDENZIALI_TAB_TUTTE
+    search_query = request.GET.get("q", "").strip()
+
+    queryset = Credenziale.objects.all()
+    if tab in CREDENZIALI_AREA_TABS:
+        queryset = queryset.filter(area=CREDENZIALI_AREA_TABS[tab])
+    if search_query:
+        queryset = queryset.filter(
+            Q(servizio__icontains=search_query)
+            | Q(username__icontains=search_query)
+            | Q(url__icontains=search_query)
+        )
+    queryset = queryset.order_by("area", "servizio", "id")
+
+    paginator = Paginator(queryset, 50)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    return render(request, "dashboard/credenziali.html", {
+        "credenziali": page_obj,
+        "page_obj": page_obj,
+        "current_tab": tab,
+        "area_tabs": CREDENZIALI_AREA_TABS,
+        "search_query": search_query,
+        "crypto_ok": crypto.is_configured(),
+    })
+
+
+def _crypto_guard(request):
+    if crypto.is_configured():
+        return None
+    messages.error(request, "Chiave di cifratura non configurata (CREDENTIALS_ENCRYPTION_KEY). Contatta l'admin.")
+    return redirect("credenziali")
+
+
+@credenziali_access_required
+def credenziale_create(request):
+    blocked = _crypto_guard(request)
+    if blocked:
+        return blocked
+
+    if request.method == "POST":
+        form = CredenzialeForm(request.POST)
+        if form.is_valid():
+            cred = form.save(commit=False)
+            cred.modificato_da = display_name(request.user)
+            cred.save()
+            messages.success(request, "Credenziale salvata.")
+            return redirect(_credenziali_url(cred.area))
+    else:
+        tab_area = CREDENZIALI_AREA_TABS.get(request.GET.get("tab", ""))
+        form = CredenzialeForm(initial={"area": tab_area or ""})
+
+    return render(request, "dashboard/credenziale_form.html", {"form": form, "azione": "Nuova"})
+
+
+@credenziali_access_required
+def credenziale_update(request, pk):
+    blocked = _crypto_guard(request)
+    if blocked:
+        return blocked
+    cred = get_object_or_404(Credenziale, pk=pk)
+
+    if request.method == "POST":
+        form = CredenzialeForm(request.POST, instance=cred)
+        if form.is_valid():
+            cred = form.save(commit=False)
+            cred.modificato_da = display_name(request.user)
+            cred.save()
+            messages.success(request, "Credenziale aggiornata.")
+            return redirect(_credenziali_url(cred.area))
+    else:
+        form = CredenzialeForm(instance=cred)
+
+    return render(request, "dashboard/credenziale_form.html", {"form": form, "azione": "Modifica", "cred": cred})
+
+
+@credenziali_access_required
+def credenziale_delete(request, pk):
+    cred = get_object_or_404(Credenziale, pk=pk)
+
+    if request.method == "POST":
+        area = cred.area
+        cred.delete()
+        messages.success(request, "Credenziale eliminata.")
+        return redirect(_credenziali_url(area))
+
+    return render(request, "dashboard/credenziale_confirm_delete.html", {"cred": cred})
+
+
+@credenziali_access_required
+@require_POST
+def credenziale_reveal(request, pk):
+    """Restituisce password + note in chiaro (JSON) e traccia chi le ha viste."""
+    cred = get_object_or_404(Credenziale, pk=pk)
+    try:
+        payload = {"password": cred.password, "note": cred.note}
+    except crypto.CryptoNotConfigured:
+        return JsonResponse({"error": "Chiave di cifratura non configurata."}, status=503)
+    except crypto.InvalidToken:
+        logger.error("Credenziale %s: token non decifrabile con la chiave attuale", cred.pk)
+        return JsonResponse({"error": "Impossibile decifrare: chiave errata."}, status=500)
+    write_log(cred, AuditLog.ACTION_VIEW)
+    return JsonResponse(payload)
 
 
 @require_GET

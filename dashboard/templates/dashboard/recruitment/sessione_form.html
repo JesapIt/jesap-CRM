@@ -1,0 +1,58 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - Sessione recruitment{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}
+<style>
+  .tpl { border: 1px solid var(--soft-line); border-radius: 10px; margin-bottom: 12px; }
+  .tpl > summary { cursor: pointer; padding: 12px 16px; font-weight: 700; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .tpl[open] > summary { border-bottom: 1px solid var(--soft-line); }
+  .tpl__body { padding: 14px 16px; }
+  .tpl__vars { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .tpl__vars code { background: #F1F5F9; padding: 1px 5px; border-radius: 4px; color: var(--brand-ink); }
+  .tag-default { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #FEF3C7; color: #B45309; font-weight: 700; }
+  .tag-custom { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #DCFCE7; color: #15803D; font-weight: 700; }
+</style>
+{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title">{% if nuova %}NUOVA SESSIONE{% else %}{{ sessione.nome|upper }}{% endif %}</h1></header>
+  <div class="form-container">
+    {% if sessione %}<a class="back-link" href="{% url 'rec_tab' sessione.pk 'candidature' %}">← Torna alla sessione</a>{% else %}<a class="back-link" href="{% url 'rec_home' %}">← Recruitment</a>{% endif %}
+    {% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="azione" value="sessione">
+      <h2 class="form-section__title">Sessione</h2>
+      <div class="form-grid">
+        {% include "dashboard/recruitment/_field.html" with field=form.nome %}
+        {% include "dashboard/recruitment/_field.html" with field=form.link_welcome_day %}
+        {% include "dashboard/recruitment/_field.html" with field=form.aperta full=1 %}
+        {% include "dashboard/recruitment/_field.html" with field=form.conferma_automatica full=1 %}
+      </div>
+      {% if nuova %}<p class="field-help">I testi delle email vengono copiati dalla sessione precedente; li potrai modificare subito dopo.</p>{% endif %}
+      <div class="form-actions"><button type="submit" class="btn-primary">{% if nuova %}Crea sessione{% else %}Salva{% endif %}</button></div>
+    </form>
+
+    {% if template_form %}
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="azione" value="template">
+      <h2 class="form-section__title">Testi delle email ai candidati</h2>
+      <p class="field-help" style="margin-top:-8px;">Sostituiscono gli scenari Make. I testi <span class="tag-default">di esempio</span> vanno sostituiti con quelli che usate oggi. I segnaposto tra graffe vengono riempiti automaticamente.</p>
+      {% for tipo, etichetta, segnaposto, f_oggetto, f_corpo, personalizzato in template_form.gruppi %}
+        <details class="tpl">
+          <summary>{{ etichetta }} {% if personalizzato %}<span class="tag-custom">personalizzato</span>{% else %}<span class="tag-default">di esempio</span>{% endif %}</summary>
+          <div class="tpl__body">
+            <div class="tpl__vars">Segnaposto: {% for v in segnaposto %}<code>{{ "{" }}{{ v }}{{ "}" }}</code> {% endfor %}</div>
+            {% include "dashboard/recruitment/_field.html" with field=f_oggetto %}
+            <div style="height:10px;"></div>
+            {% include "dashboard/recruitment/_field.html" with field=f_corpo %}
+          </div>
+        </details>
+      {% endfor %}
+      <div class="form-actions"><button type="submit" class="btn-primary">Salva testi</button></div>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
