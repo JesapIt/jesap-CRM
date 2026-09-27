@@ -230,6 +230,9 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(',') if o.strip()
 ]
 
+# URL pubblica del sito (usata in email transazionali). Senza slash finale.
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000').rstrip('/')
+
 # Login con username o email (case-insensitive)
 AUTHENTICATION_BACKENDS = [
     "dashboard.auth_backends.EmailOrUsernameModelBackend",

@@ -15,7 +15,8 @@ def send_welcome_email(sender, instance, created, **kwargs):
     if not created:
         return
 
-    login_url = getattr(settings, 'LOGIN_URL_ABSOLUTE', 'http://localhost:8000/login/')
+    site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+    login_url = f"{site_url}/login/"
 
     context = {
         'user': instance,
