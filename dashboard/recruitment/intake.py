@@ -26,7 +26,8 @@ def normalizza(testo):
 
 # campo Candidato → intestazioni possibili nel foglio (già normalizzate)
 _ALIAS = {
-    'data_candidatura': ['informazioni cronologiche', 'timestamp', 'marca temporale', 'data ora', 'data candidatura'],
+    'data_candidatura': ['informazioni cronologiche', 'timestamp', 'marca temporale', 'data ora', 'data candidatura',
+                         'data invio'],
     'email': ['indirizzo di mail', 'indirizzo email', 'indirizzo e mail', 'email', 'e mail', 'mail'],
     'nome': ['nome'],
     'cognome': ['cognome'],
@@ -38,13 +39,16 @@ _ALIAS = {
     'cv_url': ['curriculum', 'cv', 'curriculum vitae', 'link cv'],
     'anno_frequenza': ['anno frequenza', 'anno di frequenza', 'anno di corso'],
     'residenza': ['residenza', 'citta di residenza'],
-    'area_1': ['area 1', 'prima area', 'area preferita'],
-    'area_2': ['area 2', 'seconda area'],
+    'area_1': ['area 1', 'prima area', 'area preferita', 'prima area di preferenza'],
+    'area_2': ['area 2', 'seconda area', 'seconda area di preferenza'],
     'fonte': ['fonte conoscenza jesap', 'come hai conosciuto jesap'],
-    'motivazione': ['motivazione jesap', 'motivazione'],
+    'motivazione': ['motivazione jesap', 'motivazione', 'perche vuoi entrare in jesap'],
     'conosce_jesap': ['conosci associati jesap'],
-    'conosce_je_italy': ['conosci associati je italy'],
+    'conosce_je_italy': ['conosci associati je italy', 'conosci network je italy'],
 }
+# Form del sito: canale ("Come hai conosciuto JESAP") + dettaglio ("Fonte") → un solo campo `fonte`.
+_FONTE_DETTAGLIO = {'fonte', 'specifica la fonte'}
+_URL_PREFIX = ('http://', 'https://')
 _ALIAS_INDEX = {alias: campo for campo, aliases in _ALIAS.items() for alias in aliases}
 
 _AREE = {
@@ -89,17 +93,27 @@ def parse_data_ora(valore):
 def mappa_risposta(risposta):
     """{intestazione: valore} → (campi Candidato, altre_risposte)."""
     campi, altre = {}, {}
+    fonte_dettaglio = ''
     for intestazione, valore in (risposta or {}).items():
         if valore is None:
             continue
         valore_txt = valore if isinstance(valore, datetime) else str(valore).strip()
-        campo = _ALIAS_INDEX.get(normalizza(intestazione))
+        chiave = normalizza(intestazione)
+        if chiave in _FONTE_DETTAGLIO:
+            fonte_dettaglio = valore_txt
+            continue
+        campo = _ALIAS_INDEX.get(chiave)
+        # "Curriculum" nel form del sito è testo libero: il link al CV sta nella colonna "CV".
+        if campo == 'cv_url' and not str(valore_txt).lower().startswith(_URL_PREFIX):
+            campo = None
         if campo is None or campo in campi:
             if valore_txt not in ('', None):
                 altre[str(intestazione)] = str(valore_txt)
             continue
         campi[campo] = valore_txt
 
+    if fonte_dettaglio:
+        campi['fonte'] = ' – '.join(v for v in (campi.get('fonte'), fonte_dettaglio) if v)
     if 'data_candidatura' in campi:
         raw = campi['data_candidatura']
         campi['data_candidatura'] = parse_data_ora(raw)

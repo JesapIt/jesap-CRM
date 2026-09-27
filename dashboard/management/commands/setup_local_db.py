@@ -9,10 +9,16 @@ import datetime
 from decimal import Decimal
 
 from django.apps import apps
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
+from django.utils import timezone
 
-from dashboard.models import Lead, Partnership, Progetti, Soci
+from dashboard import choices as ch
+from dashboard.models import (
+    Candidato, ColloquioIndividuale, GruppoColloquio, Lead, Partnership, Progetti,
+    RecruitmentSessione, Soci, Task,
+)
 
 
 class Command(BaseCommand):
@@ -112,4 +118,62 @@ class Command(BaseCommand):
                 ).save()
             seeded.append('soci')
 
+        # Utenti collegati ai soci demo (email @jesap): i permessi derivano dal ruolo in SOCI.
+        # Accesso locale via /dev-login/?as=<username> (password inutilizzabile).
+        User = get_user_model()
+        for username, superuser in (('anna.demo', True), ('luca.demo', False), ('sara.demo', False)):
+            if not User.objects.filter(username=username).exists():
+                user = User(username=username, email=f'{username}@jesap.it',
+                            is_staff=superuser, is_superuser=superuser)
+                user.set_unusable_password()
+                user.save()
+                seeded.append(f'utente {username}')
+
+        if not Task.objects.exists():
+            soci = {s.nome_1: s for s in Soci.objects.filter(cognome='Demo')}
+            today = datetime.date.today()
+            for titolo, area, stato, giorni, chi in (
+                ('Aggiornare dashboard KPI', 'D&A', ch.TASK_STATO_IN_CORSO, 5, 'Sara'),
+                ('Preparare pitch cliente demo', 'BD', ch.TASK_STATO_DA_INIZIARE, -2, 'Luca'),
+                ('Organizzare welcome day', 'HR', ch.TASK_STATO_COMPLETATA, -10, 'Marco'),
+            ):
+                task = Task.objects.create(titolo=titolo, area=area, stato=stato,
+                                           scadenza=today + datetime.timedelta(days=giorni), creato_da='Demo')
+                if chi in soci:
+                    task.assegnatari.add(soci[chi])
+            seeded.append('task')
+
+        if not RecruitmentSessione.objects.exists():
+            self._seed_recruitment()
+            seeded.append('recruitment')
+
         self.stdout.write(f"Dati demo inseriti: {', '.join(seeded) or 'nessuno (tabelle già popolate)'}")
+
+    def _seed_recruitment(self):
+        today = datetime.date.today()
+        luca = Soci.objects.filter(nome_1='Luca', cognome='Demo').first()
+        sessione = RecruitmentSessione.objects.create(nome='Demo REC 26', aperta=True, conferma_automatica=False)
+        gruppo = GruppoColloquio.objects.create(
+            sessione=sessione, numero=1, data=today + datetime.timedelta(days=3),
+            ora=datetime.time(15, 0), luogo='Aula demo', recruiter_1=luca,
+        )
+        base = dict(sessione=sessione, ateneo='Sapienza', data_candidatura=timezone.now())
+        Candidato.objects.create(**base, nome='Giulia', cognome='Neri', email='giulia.neri@example.com',
+                                 area_1='D&A', area_2='HR')
+        Candidato.objects.create(**base, nome='Paolo', cognome='Bassi', email='paolo.bassi@example.com',
+                                 area_1='BD', esito_screening='Scartato')
+        in_colloquio = Candidato.objects.create(
+            **base, nome='Elena', cognome='Conti', email='elena.conti@example.com', area_1='BD', area_2='M&C',
+            esito_screening='Passato', gruppo=gruppo, presenza_gruppo=True,
+            punteggio_output=Decimal('7.5'), punteggio_soft_gruppo=Decimal('8'), esito_gruppo='Ammesso',
+        )
+        ColloquioIndividuale.objects.create(candidato=in_colloquio, area='BD', recruiter_tecnico=luca,
+                                            data=today + datetime.timedelta(days=7))
+        in_prova = Candidato.objects.create(
+            **base, nome='Luca', cognome='Riva', email='luca.riva@example.com', area_1='M&C',
+            esito_screening='Passato', gruppo=gruppo, presenza_gruppo=True,
+            punteggio_output=Decimal('8'), punteggio_soft_gruppo=Decimal('9'), esito_gruppo='Ammesso',
+            area_prova='M&C',
+        )
+        ColloquioIndividuale.objects.create(candidato=in_prova, area='M&C', presenza=True,
+                                            punteggio_soft=Decimal('8'), punteggio_hard=Decimal('7'), esito='Ammesso')

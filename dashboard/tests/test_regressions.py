@@ -359,3 +359,18 @@ def test_setup_local_db_seeds_demo_data_idempotently():
     call_command('setup_local_db', demo=True)
     assert (Progetti.objects.count(), Partnership.objects.count(),
             Lead.objects.count(), Soci.objects.count()) == counts
+
+
+@pytest.mark.django_db
+def test_setup_local_db_demo_users_see_recruitment_by_role():
+    from dashboard.models import Candidato, RecruitmentSessione, Task
+    from dashboard.permissions import can_access_credenziali, can_access_recruitment
+
+    call_command('setup_local_db', demo=True)
+    cda = User.objects.get(username='anna.demo')
+    socio = User.objects.get(username='sara.demo')
+    assert can_access_recruitment(cda) and can_access_credenziali(cda)
+    assert not can_access_recruitment(socio)
+    assert RecruitmentSessione.objects.filter(aperta=True).count() == 1
+    assert Candidato.objects.count() >= 4
+    assert Task.objects.exists()
