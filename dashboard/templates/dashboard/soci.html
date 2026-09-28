@@ -43,10 +43,6 @@
     }
     .admin-add-section h3 { margin: 0 0 12px; font-size: 16px; color: #334155; }
 
-    .messages { list-style: none; padding: 0; margin: 0 0 16px; }
-    .messages li { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
-    .messages li.error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .messages li.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
   </style>
 
   <section class="page">
@@ -65,15 +61,6 @@
         <a href="?tab=admin" class="tab-button {% if current_tab == 'admin' %}active{% endif %}">ADMIN</a>
       {% endif %}
     </div>
-
-    {# --- Messages --- #}
-    {% if messages %}
-      <ul class="messages">
-        {% for message in messages %}
-          <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
 
     {# --- Toolbar (search + sort) — hidden on admin tab --- #}
     {% if not is_admin_tab %}
@@ -136,7 +123,7 @@
                 {% elif u.is_superuser and not request.user.is_superuser %}
                   <span style="color:#94a3b8;font-size:13px;">Superuser</span>
                 {% else %}
-                <form method="post" action="{% url 'admin_demote' %}" style="display:inline;" onsubmit="return confirm('Rimuovere {{ u.username }} dagli admin?');">
+                <form method="post" action="{% url 'admin_demote' %}" style="display:inline;" onsubmit="return confirm('Rimuovere {{ u.username|escapejs }} dagli admin?');">
                   {% csrf_token %}
                   <input type="hidden" name="user_id" value="{{ u.pk }}">
                   <button type="submit" class="btn-action danger">Rimuovi da admin</button>
@@ -214,7 +201,6 @@
           </thead>
           <tbody id="table-body">
             {% for s in soci_list %}
-              {% if s.nome_e_cognome and s.nome_e_cognome != 'None' %}
               <tr class="soci-row" data-row-id="soci-row-{{ forloop.counter }}">
                 <td>
                   <button type="button" class="soci-row-toggle" data-toggle-target="soci-row-{{ forloop.counter }}" aria-expanded="false" aria-label="Espandi dettagli">
@@ -279,7 +265,6 @@
                   </div>
                 </td>
               </tr>
-              {% endif %}
             {% empty %}
               <tr><td colspan="4" style="text-align:center;padding:40px;color:#64748B;">Nessun socio trovato.</td></tr>
             {% endfor %}

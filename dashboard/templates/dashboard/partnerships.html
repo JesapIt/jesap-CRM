@@ -322,7 +322,7 @@
                       </div>
                       <div class="detail-item">
                         <span class="detail-item__label">Compenso economico</span>
-                        <span class="detail-item__value">{% if p.compenso_economico %}Sì{% else %}No{% endif %}</span>
+                        <span class="detail-item__value{% if p.compenso_economico is None %} detail-item__value--muted{% endif %}">{% if p.compenso_economico %}Sì{% elif p.compenso_economico is False %}No{% else %}—{% endif %}</span>
                       </div>
                       <div class="detail-item" style="grid-column: span 2;">
                         <span class="detail-item__label">Cartella Drive (nome)</span>
@@ -378,7 +378,7 @@
                 {% endfor %}
               {% else %}
                 <tr>
-                  <td colspan="3" style="text-align: center; padding: 40px; color: #64748B;">Nessun lead presente.</td>
+                  <td colspan="{% if is_editor %}3{% else %}2{% endif %}" style="text-align: center; padding: 40px; color: #64748B;">Nessun lead presente.</td>
                 </tr>
               {% endif %}
 

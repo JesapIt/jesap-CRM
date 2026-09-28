@@ -10,6 +10,7 @@ import json
 import hashlib
 import requests
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
@@ -60,8 +61,8 @@ def fetch_supabase() -> dict:
 def upsert_supabase(rows: list):
     if not rows:
         return
-    # Filtra solo le colonne note
-    clean = [{c: r.get(c) for c in SYNC_COLUMNS} for r in rows]
+    # Filtra solo le colonne note; cella vuota → NULL (""  su BIGINT/ID = errore Postgres)
+    clean = [{c: (None if r.get(c) == "" else r.get(c)) for c in SYNC_COLUMNS} for r in rows]
     resp = requests.post(
         f"{SUPABASE_URL}/rest/v1/{TABLE}",
         headers=_sb_headers({"Prefer": "resolution=merge-duplicates,return=minimal"}),
@@ -98,8 +99,8 @@ def update_sheets(gc, rows_to_update: dict):
         values = [str(data.get(h, "") or "") for h in headers]
         try:
             row_num = all_pk_values.index(str(row_id)) + 1
-            end_col = chr(64 + len(headers))
-            ws.update(f"A{row_num}:{end_col}{row_num}", [values], raw=False)
+            # rowcol_to_a1 gestisce anche oltre la colonna Z (chr(64+n) no)
+            ws.update(f"A{row_num}:{rowcol_to_a1(row_num, len(headers))}", [values], raw=False)
         except ValueError:
             # ID non trovato → aggiungi riga nuova
             ws.append_row(values, value_input_option="USER_ENTERED")

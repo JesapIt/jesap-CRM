@@ -1,0 +1,75 @@
+{% extends "dashboard/recruitment/base.html" %}
+
+{% block rec_head %}
+<style>
+  .gruppi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .gruppo-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 10px 14px; font-size: 13px; text-decoration: none; color: inherit; display: block; }
+  .gruppo-card:hover { border-color: var(--brand); }
+  .gruppo-card strong { color: var(--brand); font-size: 15px; }
+  .gruppo-card .riga { color: #475569; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gruppo-card.nuovo { display: flex; align-items: center; justify-content: center; border-style: dashed; color: var(--brand); font-weight: 700; min-height: 80px; }
+  .section-title { font-size: 14px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: .5px; margin: 0 0 10px; }
+</style>
+{% endblock %}
+
+{% block tab_content %}
+<h2 class="section-title">Gruppi ({{ gruppi|length }})</h2>
+<div class="gruppi-grid">
+  {% for g in gruppi %}
+    <a class="gruppo-card" href="{% url 'rec_gruppo_update' g.pk %}">
+      <strong>Gruppo {{ g.numero }}</strong>
+      <div class="riga">📅 {{ g.data|date:"D d/m"|default:"data da definire" }} {% if g.ora %}· {{ g.ora|time:"H:i" }}{% endif %}</div>
+      <div class="riga">📍 {{ g.luogo|default:"luogo da definire" }}</div>
+      <div class="riga">👥 {% for rec in g.recruiters %}{{ rec.nome_e_cognome }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">nessun recruiter</span>{% endfor %}</div>
+    </a>
+  {% endfor %}
+  <a class="gruppo-card nuovo" href="{% url 'rec_gruppo_create' sessione.pk %}">+ Nuovo gruppo</a>
+</div>
+
+<h2 class="section-title">Candidati che hanno passato lo screening</h2>
+<form method="post" id="rec-formset">
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <div class="rec-table-wrap">
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th class="sticky-col">Candidato</th>
+          <th>Aree</th>
+          <th>Gruppo</th>
+          <th>Presente</th>
+          <th>Punt. output</th>
+          <th>Link output</th>
+          <th>Punt. soft</th>
+          <th>Link scheda</th>
+          <th title="30% output + 70% soft">Media</th>
+          <th>Ammissione individuale</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in righe %}
+        <tr class="{% if r.form.errors %}has-errors{% endif %}">
+          <td class="sticky-col">{% for h in r.form.hidden_fields %}{{ h }}{% endfor %}{% include "dashboard/recruitment/_cand_cell.html" %}</td>
+          <td>{{ r.c.area_1|default:"-" }}{% if r.c.area_2 %} <span class="muted">/ {{ r.c.area_2 }}</span>{% endif %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.gruppo %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.presenza_gruppo %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.punteggio_output %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.link_output %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.punteggio_soft_gruppo %}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.link_scheda_gruppo %}</td>
+          <td class="num">{{ r.c.media_gruppo|default:"-" }}</td>
+          <td>{% include "dashboard/recruitment/_cell.html" with field=r.form.esito_gruppo %}</td>
+          <td>{% include "dashboard/recruitment/_email_cell.html" %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="11" style="text-align:center; padding:40px; color:#94A3B8;">Nessun candidato ha ancora passato lo screening CV.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if righe %}
+    <div class="save-bar"><span class="hint" id="save-hint">La media si aggiorna dopo il salvataggio · Gli ammessi compaiono nella scheda 3, dove si pianifica il colloquio individuale</span><button type="submit" class="btn-primary">Salva modifiche</button></div>
+  {% endif %}
+</form>
+{% endblock %}

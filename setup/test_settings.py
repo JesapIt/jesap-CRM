@@ -22,3 +22,20 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# I test girano senza `collectstatic`: niente manifest né STATIC_ROOT per WhiteNoise.
+STORAGES = {
+    **STORAGES,  # noqa: F405
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+MIDDLEWARE = [m for m in MIDDLEWARE if not m.startswith("whitenoise.")]  # noqa: F405
+
+# Chiave usa-e-getta per i test dell'area Credenziali.
+from cryptography.fernet import Fernet  # noqa: E402
+
+CREDENTIALS_ENCRYPTION_KEY = Fernet.generate_key().decode()
+
+# Recruitment: niente pause tra gli invii nei test
+RECRUITMENT_EMAIL_PAUSE = 0
+RECRUITMENT_WEBHOOK_TOKEN = 'test-token'
+EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'

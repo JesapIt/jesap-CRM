@@ -6,13 +6,13 @@ from django.template.loader import render_to_string
 from django.conf import settings
 
 from .audit import diff, snapshot, write_log
-from .models import Partnership, Progetti
+from .models import Credenziale, Lead, Partnership, Progetti, Task
 
 
 @receiver(post_save, sender=User)
 def send_welcome_email(sender, instance, created, **kwargs):
     """Send a welcome email when a new User is created."""
-    if not created:
+    if not created or not instance.email:
         return
 
     site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
@@ -36,7 +36,7 @@ def send_welcome_email(sender, instance, created, **kwargs):
     msg.send(fail_silently=True)
 
 
-AUDITED_MODELS = (Partnership, Progetti)
+AUDITED_MODELS = (Lead, Partnership, Progetti, Task, Credenziale)
 
 
 @receiver(pre_save)

@@ -1,0 +1,91 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - {{ c.nome }} {{ c.cognome }}{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title" style="font-size:40px;">{{ c.nome|upper }} {{ c.cognome|upper }}</h1></header>
+  <div class="form-container">
+    <a class="back-link" href="{% url 'rec_tab' c.sessione_id 'candidature' %}">← {{ c.sessione.nome }}</a>
+    {% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+
+    <div class="form-card">
+      <h2 class="form-section__title">Percorso</h2>
+      <p style="margin:0 0 14px;"><span class="pill">{{ c.fase }}</span></p>
+      <dl class="kv">
+        <dt>1 · Screening CV</dt><dd>{{ c.esito_screening|default:"da valutare" }}</dd>
+        <dt>2 · Colloquio di gruppo</dt>
+        <dd>{% if c.gruppo %}Gruppo {{ c.gruppo.numero }}{% if c.gruppo.data %} · {{ c.gruppo.data|date:"d/m/Y" }}{% endif %}{% if c.gruppo.ora %} {{ c.gruppo.ora|time:"H:i" }}{% endif %}{% else %}—{% endif %}
+          {% if c.presenza_gruppo is not None %} · {% if c.presenza_gruppo %}presente{% else %}assente{% endif %}{% endif %}
+          {% if c.media_gruppo is not None %} · output {{ c.punteggio_output }} · soft {{ c.punteggio_soft_gruppo }} · <strong>media {{ c.media_gruppo }}</strong>{% endif %}
+          {% if c.esito_gruppo %} · <strong>{{ c.esito_gruppo }}</strong>{% endif %}
+          {% if c.link_output %}<br><a href="{{ c.link_output }}" target="_blank" rel="noopener noreferrer">Output</a>{% endif %}{% if c.link_scheda_gruppo %} · <a href="{{ c.link_scheda_gruppo }}" target="_blank" rel="noopener noreferrer">Scheda</a>{% endif %}
+        </dd>
+        {% for col in colloqui %}
+          <dt>3 · Colloquio {{ col.tipo|lower }}</dt>
+          <dd>{{ col.area|default:"area ?" }}{% if col.data %} · {{ col.data|date:"d/m/Y" }}{% endif %}{% if col.ora %} {{ col.ora|time:"H:i" }}{% endif %}
+            {% if col.recruiter_hr %} · HR: {{ col.recruiter_hr.nome_e_cognome }}{% endif %}{% if col.recruiter_tecnico %} · Tecnico: {{ col.recruiter_tecnico.nome_e_cognome }}{% endif %}
+            {% if col.media_individuale is not None %} · soft {{ col.punteggio_soft }} · hard {{ col.punteggio_hard }} · <strong>media {{ col.media_individuale }}</strong>{% endif %}
+            {% if col.media_colloqui is not None %} · media totale {{ col.media_colloqui }}{% endif %}
+            {% if col.esito %} · <strong>{{ col.esito }}</strong>{% endif %}{% if col.area_probabile %} → {{ col.area_probabile }}{% endif %}
+          </dd>
+        {% empty %}
+          <dt>3 · Colloquio individuale</dt><dd>—</dd>
+        {% endfor %}
+        <dt>4 · Periodo di prova</dt>
+        <dd>{% if c.area_prova %}{{ c.area_prova }} · {% endif %}
+          {% if c.conferma_area %}<span class="ok">✓</span>{% else %}<span class="muted">○</span>{% endif %} area confermata ·
+          {% if c.mail_jesap_creata %}<span class="ok">✓</span>{% else %}<span class="muted">○</span>{% endif %} mail JESAP ·
+          {% if c.form_compilato %}<span class="ok">✓</span>{% else %}<span class="muted">○</span>{% endif %} form ·
+          {% if c.gruppo_telegram %}<span class="ok">✓</span>{% else %}<span class="muted">○</span>{% endif %} Telegram
+          {% if c.esito_finale %}<br><strong>Esito finale: {{ c.esito_finale }}</strong>{% if c.settimane_prolungamento %} ({{ c.settimane_prolungamento }} settimane){% endif %}{% endif %}
+        </dd>
+      </dl>
+    </div>
+
+    <div class="form-card">
+      <h2 class="form-section__title">Email</h2>
+      <form method="post" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;" onsubmit="return confirm('Inviare questa email a {{ c.email }}?');">
+        {% csrf_token %}
+        <input type="hidden" name="azione" value="invia_email">
+        <select name="tipo" class="form-control" style="max-width:420px; height:40px; border-radius:8px; border:2px solid var(--soft-line); padding:0 10px; font-family:inherit;">
+          {% for k, label in tipi_email %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-primary" style="height:40px;">Invia ora</button>
+      </form>
+      <table class="mini-table">
+        <thead><tr><th>Quando</th><th>Email</th><th>Esito</th><th>Da</th></tr></thead>
+        <tbody>
+          {% for e in email_log %}
+            <tr>
+              <td style="white-space:nowrap;">{{ e.inviata_il|date:"d/m/Y H:i" }}</td>
+              <td><details><summary>{{ e.oggetto }}</summary><div style="white-space:pre-line; margin-top:6px; color:#475569;">{{ e.corpo }}</div></details></td>
+              <td>{% if e.ok %}<span class="ok">✓ inviata</span>{% else %}<span class="ko" title="{{ e.errore }}">✗ errore</span><div style="font-size:11px;color:#B91C1C;">{{ e.errore|truncatechars:120 }}</div>{% endif %}</td>
+              <td>{{ e.inviata_da|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4" class="muted">Nessuna email inviata.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <h2 class="form-section__title">Dati della candidatura</h2>
+      <p class="field-help" style="margin-top:-8px;">Ricevuta il {{ c.data_candidatura|date:"d/m/Y H:i"|default:"-" }}{% if c.cv_url %} · <a href="{{ c.cv_url }}" target="_blank" rel="noopener noreferrer">Apri CV ↗</a>{% endif %}</p>
+      <div class="form-grid">
+        {% for field in form %}{% if field.name == 'motivazione' or field.name == 'note' %}{% include "dashboard/recruitment/_field.html" with full=1 %}{% else %}{% include "dashboard/recruitment/_field.html" %}{% endif %}{% endfor %}
+      </div>
+      {% if altre_risposte %}
+        <h2 class="form-section__title" style="margin-top:22px;">Altre risposte al form</h2>
+        <dl class="kv pre">{% for k, v in altre_risposte %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+      {% endif %}
+      <div class="form-actions">
+        <button type="submit" name="azione" value="elimina" class="btn-danger" formnovalidate
+                onclick="return confirm('Eliminare definitivamente {{ c.nome }} {{ c.cognome }} e tutti i suoi dati (colloqui, email)? Operazione irreversibile.');">Elimina candidato</button>
+        <button type="submit" name="azione" value="salva" class="btn-primary">Salva dati</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

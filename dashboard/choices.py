@@ -182,6 +182,84 @@ LEAD_PRIORITA_CHOICES = _build(LEAD_PRIORITA_VALUES)
 
 
 # ============================================================
+# TASK (ex Notion "Tasks Tracker", una tabella per area)
+# ============================================================
+
+TASK_AREA_VALUES = [
+    'D&A',
+    'BD',
+    'HR',
+    'M&C',
+]
+TASK_AREA_CHOICES = _build(TASK_AREA_VALUES)
+
+TASK_STATO_DA_INIZIARE = 'Da iniziare'
+TASK_STATO_IN_CORSO = 'In corso'
+TASK_STATO_COMPLETATA = 'Completata'
+TASK_STATO_VALUES = [
+    TASK_STATO_DA_INIZIARE,
+    TASK_STATO_IN_CORSO,
+    TASK_STATO_COMPLETATA,
+]
+TASK_STATO_CHOICES = _build(TASK_STATO_VALUES)
+
+TASK_PRIORITA_VALUES = LEAD_PRIORITA_VALUES
+TASK_PRIORITA_CHOICES = _build(TASK_PRIORITA_VALUES)
+
+TASK_EFFORT_VALUES = [
+    'Small',
+    'Medium',
+    'Large',
+]
+TASK_EFFORT_CHOICES = _build(TASK_EFFORT_VALUES)
+
+
+# ============================================================
+# CREDENZIALI (area riservata CdA + responsabili)
+# ============================================================
+
+CREDENZIALI_AREA_VALUES = [
+    'Generale',
+    'D&A',
+    'BD',
+    'HR',
+    'M&C',
+]
+CREDENZIALI_AREA_CHOICES = _build(CREDENZIALI_AREA_VALUES)
+
+
+# ============================================================
+# RECRUITMENT (ex "DB REC" Google Sheet)
+# ============================================================
+
+REC_AREA_VALUES = [
+    'BD',
+    'D&A',
+    'HR',
+    'M&C',
+    'Legal',
+    'IT',
+]
+REC_AREA_CHOICES = _build(REC_AREA_VALUES)
+
+REC_ESITO_SCREENING_VALUES = ['Passato', 'Scartato', 'Doppione']
+REC_ESITO_SCREENING_CHOICES = _build(REC_ESITO_SCREENING_VALUES)
+
+REC_ESITO_GRUPPO_VALUES = ['Ammesso', 'Non ammesso', 'Indeciso']
+REC_ESITO_GRUPPO_CHOICES = _build(REC_ESITO_GRUPPO_VALUES)
+
+REC_TIPO_PRIMA = 'Prima scelta'
+REC_TIPO_SECONDA = 'Seconda scelta'
+REC_TIPO_COLLOQUIO_VALUES = [REC_TIPO_PRIMA, REC_TIPO_SECONDA]
+
+REC_ESITO_INDIVIDUALE_VALUES = ['Ammesso', 'Non ammesso', 'Seconda scelta']
+REC_ESITO_INDIVIDUALE_CHOICES = _build(REC_ESITO_INDIVIDUALE_VALUES)
+
+REC_ESITO_FINALE_VALUES = ['Ammesso', 'Non ammesso', 'Prolungato']
+REC_ESITO_FINALE_CHOICES = _build(REC_ESITO_FINALE_VALUES)
+
+
+# ============================================================
 # UTIL
 # ============================================================
 

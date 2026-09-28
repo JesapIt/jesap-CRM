@@ -1,5 +1,6 @@
 import re
-from datetime import date, datetime
+from datetime import date
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -8,15 +9,12 @@ from django.db import models
 from django.db.models import Max
 
 from . import choices as ch
+from .utils.parsing import parse_date_text
 
 
 def _parse_iso_date(value):
-    if value in (None, ''):
-        return None
-    try:
-        return datetime.strptime(str(value).strip(), '%Y-%m-%d').date()
-    except (TypeError, ValueError):
-        return None
+    # Il sync Sheets scrive DD/MM/YYYY, la UI YYYY-MM-DD: accetta entrambi.
+    return parse_date_text(value)
 
 
 def _slug_for_email(value):
@@ -132,6 +130,9 @@ class Progetti(models.Model):
             self.codice_progetto = generate_codice_progetto(
                 self.nome_progetto, self.data_inizio,
             )
+            # Codice appena generato: su collisione deve fallire, non UPDATE-are
+            # silenziosamente il progetto esistente.
+            kwargs['force_insert'] = True
         super().save(*args, **kwargs)
 
 
@@ -501,6 +502,28 @@ class Lead(models.Model):
     def __str__(self):
         return f"{self.lead_id} — {self.azienda or '(no azienda)'}"
 
+    # Colonne scritte solo da Postgres (GENERATED ALWAYS / trigger / DEFAULT now()).
+    # `editable=False` le nasconde dai form ma Django le includerebbe comunque
+    # in INSERT/UPDATE → "cannot insert a non-DEFAULT value" / NOT NULL violation.
+    DB_MANAGED_FIELDS = frozenset({
+        'valore_ponderato', 'alert_follow_up', 'ultimo_aggiornamento', 'created_at',
+    })
+
+    def _do_insert(self, manager, using, fields, returning_fields, raw):
+        fields = [
+            f for f in fields
+            if f.name not in self.DB_MANAGED_FIELDS
+            # NULL esplicito bypasserebbe DEFAULT CURRENT_DATE
+            and not (f.name == 'data_creazione' and self.data_creazione is None)
+        ]
+        return super()._do_insert(manager, using, fields, returning_fields, raw)
+
+    def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
+        # storico_aggiornamenti: appeso dal trigger; riscriverlo perderebbe voci concorrenti
+        skip = self.DB_MANAGED_FIELDS | {'storico_aggiornamenti'}
+        values = [v for v in values if v[0].name not in skip]
+        return super()._do_update(base_qs, using, pk_val, values, update_fields, forced_update)
+
     # Helper proprietà per template
     @property
     def is_alert(self):
@@ -514,14 +537,354 @@ class Lead(models.Model):
         return ' '.join(p for p in parts if p)
 
 
+class Task(models.Model):
+    """
+    Task per area (ex Notion "Tasks Tracker"). Tabella gestita da Django
+    (managed=True): nessun sync Sheets, schema versionato nelle migrations.
+    """
+
+    titolo = models.CharField(max_length=255)
+    area = models.CharField(max_length=16, choices=[(v, v) for v in ch.TASK_AREA_VALUES])
+    competenza = models.CharField(
+        max_length=255, blank=True,
+        help_text='Sottogruppo/i dell\'area, separati da virgola (es. Data, Automations).',
+    )
+    stato = models.CharField(
+        max_length=32, choices=[(v, v) for v in ch.TASK_STATO_VALUES],
+        default=ch.TASK_STATO_DA_INIZIARE,
+    )
+    priorita = models.CharField(max_length=16, blank=True, choices=[(v, v) for v in ch.TASK_PRIORITA_VALUES])
+    effort = models.CharField(max_length=16, blank=True, choices=[(v, v) for v in ch.TASK_EFFORT_VALUES])
+    scadenza = models.DateField(null=True, blank=True)
+    descrizione = models.TextField(blank=True)
+    link = models.TextField(blank=True, help_text='Un link per riga.')
+
+    # db_constraint=False: il sync Sheets cancella righe SOCI, una FK lo bloccherebbe.
+    assegnatari = models.ManyToManyField(
+        Soci, blank=True, related_name='tasks',
+        db_table='TASKS_ASSEGNATARI', db_constraint=False,
+    )
+    # Persone non presenti in SOCI (es. ex soci importati da Notion).
+    altri_assegnatari = models.TextField(blank=True)
+
+    creato_da = models.CharField(max_length=255, blank=True)
+    creato_il = models.DateTimeField(auto_now_add=True)
+    modificato_da = models.CharField(max_length=255, blank=True)
+    modificato_il = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'TASKS'
+
+    def __str__(self):
+        return f'[{self.area}] {self.titolo}'
+
+    @property
+    def is_completata(self):
+        return self.stato == ch.TASK_STATO_COMPLETATA
+
+    @property
+    def scaduta(self):
+        return bool(self.scadenza and not self.is_completata and self.scadenza < date.today())
+
+    @property
+    def competenze_list(self):
+        return [c.strip() for c in (self.competenza or '').split(',') if c.strip()]
+
+    @property
+    def link_list(self):
+        return [l.strip() for l in (self.link or '').splitlines() if l.strip()]
+
+
+class Credenziale(models.Model):
+    """
+    Credenziali account JESAP (ex Notion). Password e note cifrate con Fernet
+    (vedi `dashboard/crypto.py`): la chiave NON sta nel DB.
+    Accesso: solo CdA + responsabili (vedi `dashboard/permissions.py`).
+    """
+
+    # Campi mai scritti in chiaro nell'AuditLog (vedi audit.snapshot).
+    AUDIT_SECRET_FIELDS = ('password_cifrata', 'note_cifrate')
+
+    area = models.CharField(max_length=16, choices=[(v, v) for v in ch.CREDENZIALI_AREA_VALUES])
+    servizio = models.CharField(max_length=255)
+    url = models.URLField(max_length=500, blank=True)
+    username = models.CharField(max_length=255, blank=True)
+    password_cifrata = models.TextField(blank=True, editable=False)
+    note_cifrate = models.TextField(blank=True, editable=False)
+
+    creato_il = models.DateTimeField(auto_now_add=True)
+    modificato_da = models.CharField(max_length=255, blank=True)
+    modificato_il = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'CREDENZIALI'
+        verbose_name_plural = 'credenziali'
+
+    def __str__(self):
+        return f'{self.servizio} ({self.area})'
+
+    @property
+    def password(self):
+        from . import crypto
+        return crypto.decrypt(self.password_cifrata)
+
+    @password.setter
+    def password(self, value):
+        from . import crypto
+        self.password_cifrata = crypto.encrypt(value)
+
+    @property
+    def note(self):
+        from . import crypto
+        return crypto.decrypt(self.note_cifrate)
+
+    @note.setter
+    def note(self, value):
+        from . import crypto
+        self.note_cifrate = crypto.encrypt(value)
+
+
+# ============================================================
+# RECRUITMENT
+# Flusso: candidatura (form sito → Google Sheet → webhook CRM) → screening CV
+# → colloquio di gruppo → colloquio individuale → periodo di prova → esito finale.
+# FK verso SOCI con db_constraint=False: il sync Sheets può cancellare righe SOCI.
+# ============================================================
+
+def _rec_choices(values):
+    return [(v, v) for v in values]
+
+
+def _media(*valori):
+    valori = [Decimal(v) for v in valori if v is not None]
+    if not valori:
+        return None
+    return (sum(valori) / len(valori)).quantize(Decimal('0.01'))
+
+
+class RecruitmentSessione(models.Model):
+    nome = models.CharField(max_length=100, unique=True, help_text='Es. Fall REC 25')
+    aperta = models.BooleanField(
+        default=False,
+        help_text='Le nuove candidature dal form finiscono in questa sessione (una sola aperta alla volta).',
+    )
+    conferma_automatica = models.BooleanField(
+        default=True, help_text='Invia subito l\'email di conferma ricezione a ogni nuova candidatura.',
+    )
+    link_welcome_day = models.CharField(max_length=500, blank=True)
+    # {tipo_email: {"oggetto": ..., "corpo": ...}} — sovrascrive i testi di default
+    template_email = models.JSONField(default=dict, blank=True)
+    creato_il = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'REC_SESSIONI'
+        ordering = ['-creato_il']
+
+    def __str__(self):
+        return self.nome
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.aperta:
+            RecruitmentSessione.objects.exclude(pk=self.pk).filter(aperta=True).update(aperta=False)
+
+
+class GruppoColloquio(models.Model):
+    sessione = models.ForeignKey(RecruitmentSessione, on_delete=models.CASCADE, related_name='gruppi')
+    numero = models.PositiveSmallIntegerField()
+    data = models.DateField(null=True, blank=True)
+    ora = models.TimeField(null=True, blank=True)
+    luogo = models.CharField(max_length=255, blank=True, help_text='Aula o link Meet')
+    recruiter_1 = models.ForeignKey(Soci, null=True, blank=True, on_delete=models.SET_NULL, db_constraint=False, related_name='+')
+    recruiter_2 = models.ForeignKey(Soci, null=True, blank=True, on_delete=models.SET_NULL, db_constraint=False, related_name='+')
+    recruiter_3 = models.ForeignKey(Soci, null=True, blank=True, on_delete=models.SET_NULL, db_constraint=False, related_name='+')
+    note = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'REC_GRUPPI'
+        constraints = [models.UniqueConstraint(fields=['sessione', 'numero'], name='rec_gruppo_numero_unico')]
+
+    def __str__(self):
+        return f'Gruppo {self.numero}'
+
+    @property
+    def recruiters(self):
+        return [r for r in (self.recruiter_1, self.recruiter_2, self.recruiter_3) if r]
+
+
+class Candidato(models.Model):
+    sessione = models.ForeignKey(RecruitmentSessione, on_delete=models.CASCADE, related_name='candidati')
+
+    # --- Risposte al form ---
+    data_candidatura = models.DateTimeField(null=True, blank=True)
+    email = models.EmailField(max_length=254)
+    nome = models.CharField(max_length=100)
+    cognome = models.CharField(max_length=100)
+    data_nascita = models.CharField(max_length=30, blank=True)
+    telefono = models.CharField(max_length=50, blank=True)
+    ateneo = models.CharField(max_length=255, blank=True)
+    facolta = models.CharField(max_length=255, blank=True)
+    corso_laurea = models.CharField(max_length=255, blank=True)
+    anno_frequenza = models.CharField(max_length=100, blank=True)
+    residenza = models.CharField(max_length=255, blank=True)
+    cv_url = models.CharField(max_length=500, blank=True)
+    area_1 = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_AREA_VALUES))
+    area_2 = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_AREA_VALUES))
+    fonte = models.CharField(max_length=255, blank=True)
+    motivazione = models.TextField(blank=True)
+    conosce_jesap = models.CharField(max_length=255, blank=True)
+    conosce_je_italy = models.CharField(max_length=255, blank=True)
+    altre_risposte = models.JSONField(default=dict, blank=True)
+
+    # --- 1) Screening CV ---
+    esito_screening = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_ESITO_SCREENING_VALUES))
+
+    # --- 2) Colloquio di gruppo ---
+    gruppo = models.ForeignKey(GruppoColloquio, null=True, blank=True, on_delete=models.SET_NULL, related_name='candidati')
+    presenza_gruppo = models.BooleanField(null=True, blank=True)
+    link_output = models.CharField(max_length=500, blank=True)
+    punteggio_output = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    link_scheda_gruppo = models.CharField(max_length=500, blank=True)
+    punteggio_soft_gruppo = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    esito_gruppo = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_ESITO_GRUPPO_VALUES))
+
+    # --- 4) Periodo di prova (SIP) + esito finale ---
+    area_prova = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_AREA_VALUES))
+    conferma_area = models.BooleanField(default=False)
+    mail_jesap_creata = models.BooleanField(default=False)
+    form_compilato = models.BooleanField(default=False)
+    gruppo_telegram = models.BooleanField(default=False)
+    esito_finale = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_ESITO_FINALE_VALUES))
+    settimane_prolungamento = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    note = models.TextField(blank=True)
+    creato_il = models.DateTimeField(auto_now_add=True)
+    modificato_il = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'REC_CANDIDATI'
+        indexes = [models.Index(fields=['sessione', 'email'], name='rec_cand_sessione_email')]
+
+    def __str__(self):
+        return f'{self.nome} {self.cognome}'.strip()
+
+    @property
+    def nome_completo(self):
+        return str(self)
+
+    @property
+    def media_gruppo(self):
+        """Come nel foglio: 30% elaborato (output) + 70% soft skill."""
+        if self.punteggio_output is None or self.punteggio_soft_gruppo is None:
+            return None
+        return (self.punteggio_output * Decimal('0.3') + self.punteggio_soft_gruppo * Decimal('0.7')).quantize(Decimal('0.01'))
+
+    def colloquio(self, tipo=ch.REC_TIPO_PRIMA):
+        for c in self.colloqui.all():
+            if c.tipo == tipo:
+                return c
+        return None
+
+    @property
+    def colloquio_decisivo(self):
+        """Seconda scelta se esiste, altrimenti prima scelta."""
+        return self.colloquio(ch.REC_TIPO_SECONDA) or self.colloquio(ch.REC_TIPO_PRIMA)
+
+    @property
+    def esito_individuale(self):
+        c = self.colloquio_decisivo
+        return c.esito if c else ''
+
+    @property
+    def fase(self):
+        if self.esito_finale:
+            return f'Esito finale: {self.esito_finale}'
+        if self.esito_individuale == 'Ammesso':
+            return 'Periodo di prova'
+        if self.esito_individuale == 'Non ammesso':
+            return 'Non ammesso (colloquio individuale)'
+        if self.esito_gruppo == 'Ammesso':
+            return 'Colloquio individuale'
+        if self.esito_gruppo == 'Non ammesso':
+            return 'Non ammesso (colloquio di gruppo)'
+        if self.esito_screening == 'Passato':
+            return 'Colloquio di gruppo'
+        if self.esito_screening in ('Scartato', 'Doppione'):
+            return f'Screening: {self.esito_screening}'
+        return 'Screening CV'
+
+
+class ColloquioIndividuale(models.Model):
+    candidato = models.ForeignKey(Candidato, on_delete=models.CASCADE, related_name='colloqui')
+    tipo = models.CharField(max_length=16, choices=_rec_choices(ch.REC_TIPO_COLLOQUIO_VALUES), default=ch.REC_TIPO_PRIMA)
+    area = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_AREA_VALUES))
+    con_resp_vice = models.BooleanField(default=False)
+    presenza_confermata = models.BooleanField(default=False)
+    link_meet = models.CharField(max_length=500, blank=True)
+    data = models.DateField(null=True, blank=True)
+    ora = models.TimeField(null=True, blank=True)
+    recruiter_hr = models.ForeignKey(Soci, null=True, blank=True, on_delete=models.SET_NULL, db_constraint=False, related_name='+')
+    recruiter_tecnico = models.ForeignKey(Soci, null=True, blank=True, on_delete=models.SET_NULL, db_constraint=False, related_name='+')
+    presenza = models.BooleanField(null=True, blank=True)
+    durata_minuti = models.PositiveSmallIntegerField(null=True, blank=True)
+    punteggio_soft = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    punteggio_hard = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    link_scheda = models.CharField(max_length=500, blank=True)
+    esito = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_ESITO_INDIVIDUALE_VALUES))
+    area_probabile = models.CharField(max_length=16, blank=True, choices=_rec_choices(ch.REC_AREA_VALUES))
+
+    class Meta:
+        db_table = 'REC_COLLOQUI'
+        constraints = [models.UniqueConstraint(fields=['candidato', 'tipo'], name='rec_colloquio_tipo_unico')]
+
+    def __str__(self):
+        return f'{self.candidato} — {self.tipo}'
+
+    @property
+    def pianificato(self):
+        return bool(self.data and self.ora and self.link_meet)
+
+    @property
+    def media_individuale(self):
+        return _media(self.punteggio_soft, self.punteggio_hard)
+
+    @property
+    def media_colloqui(self):
+        """Media tra colloquio individuale e colloquio di gruppo (come nel foglio)."""
+        return _media(self.media_individuale, self.candidato.media_gruppo)
+
+
+class EmailCandidato(models.Model):
+    """Registro di ogni email inviata (o fallita) a un candidato."""
+
+    candidato = models.ForeignKey(Candidato, on_delete=models.CASCADE, related_name='email_log')
+    tipo = models.CharField(max_length=32)
+    destinatario = models.EmailField(max_length=254)
+    oggetto = models.CharField(max_length=255)
+    corpo = models.TextField()
+    inviata_il = models.DateTimeField(auto_now_add=True)
+    inviata_da = models.CharField(max_length=255, blank=True)
+    ok = models.BooleanField(default=False)
+    errore = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'REC_EMAIL'
+        ordering = ['-inviata_il']
+
+    def __str__(self):
+        return f'{self.tipo} → {self.destinatario} ({"ok" if self.ok else "errore"})'
+
+
 class AuditLog(models.Model):
     ACTION_CREATE = 'create'
     ACTION_UPDATE = 'update'
     ACTION_DELETE = 'delete'
+    ACTION_VIEW = 'view'
     ACTION_CHOICES = [
         (ACTION_CREATE, 'Create'),
         (ACTION_UPDATE, 'Update'),
         (ACTION_DELETE, 'Delete'),
+        (ACTION_VIEW, 'View'),
     ]
 
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)

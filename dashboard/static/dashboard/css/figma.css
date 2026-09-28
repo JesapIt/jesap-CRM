@@ -406,3 +406,12 @@ button.search__submit.search__icon{
   color: transparent !important;
 }
 
+
+/* ── Flash messages (django.contrib.messages) — renderizzati da base_figma ── */
+.messages{ list-style:none; padding:0; margin:0 0 16px; }
+.messages li{ padding:10px 14px; border-radius:6px; margin-bottom:8px; font-size:14px; font-weight:500; }
+.messages li.error{ background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; }
+.messages li.success{ background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+.messages li.warning{ background:#fef3c7; color:#b45309; border:1px solid #fcd34d; }
+.messages li.info{ background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; }
+.messages--global{ max-width:1200px; margin:16px auto 0; padding:0 22px; }

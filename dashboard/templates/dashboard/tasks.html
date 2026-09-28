@@ -1,0 +1,296 @@
+{% extends "dashboard/base_figma.html" %}
+{% load static dashboard_extras %}
+
+{% block title %}JESAP Gestionale - Task{% endblock %}
+
+{% block content %}
+  <style>
+    .tab-button {
+      padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;
+      background-color: #F1F5F9; color: #64748B; transition: all 0.2s ease; font-size: 13px;
+    }
+    .tab-button.active { background-color: var(--brand); color: #fff; }
+
+    /* Rows */
+    .task-row { transition: background-color 0.2s ease; cursor: pointer; }
+    .task-row:hover { background-color: rgba(0, 0, 0, 0.04); }
+    .task-row.expanded { background-color: rgba(0, 0, 0, 0.02); }
+    .task-details-row { display: none; }
+    .task-row.expanded + .task-details-row { display: table-row; }
+    .task-details-wrap {
+      overflow: hidden; max-height: 0; opacity: 0; transform: translateY(-4px);
+      transition: max-height 260ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 180ms ease, transform 180ms ease;
+    }
+    .task-row.expanded + .task-details-row .task-details-wrap { opacity: 1; transform: translateY(0); }
+    .task-row.is-done td.task-title strong { color: #94A3B8; text-decoration: line-through; }
+
+    /* Sort */
+    .top-sort-controls { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.03); padding: 4px 12px; border-radius: 8px; }
+    .top-sort-select { border: none; background: transparent; font-weight: 600; font-family: inherit; font-size: 0.9rem; cursor: pointer; outline: none; padding: 4px; }
+
+    /* KPI */
+    .kpi-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
+    .kpi-card { flex: 1 1 140px; background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+    .kpi-card .kpi-label { font-size: 12px; color: #64748B; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: #0F172A; margin-top: 4px; }
+    .kpi-card.alert { border-color: #FCA5A5; background: #FEF2F2; }
+    .kpi-card.alert .kpi-value { color: #B91C1C; }
+    .kpi-card.win { border-color: #86EFAC; background: #F0FDF4; }
+    .kpi-card.win .kpi-value { color: #15803D; }
+
+    /* Badges */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+    .badge-priorita-Alta { background: #FEE2E2; color: #B91C1C; }
+    .badge-priorita-Media { background: #FEF3C7; color: #B45309; }
+    .badge-priorita-Bassa { background: #E0F2FE; color: #0369A1; }
+    .badge-effort { background: #F1F5F9; color: #475569; }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: rgba(138, 59, 134, 0.1); color: var(--brand-ink); margin: 2px 4px 0 0; }
+
+    .stato-select { border: 1px solid #E2E8F0; border-radius: 12px; padding: 3px 8px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .stato-Dainiziare { background: #F3F4F6; color: #4B5563; }
+    .stato-Incorso { background: #DBEAFE; color: #1D4ED8; }
+    .stato-Completata { background: #DCFCE7; color: #15803D; }
+
+    .due-late { color: #DC2626; font-weight: 700; }
+
+    /* Table */
+    .task-table { width: 100%; border-collapse: collapse; }
+    .task-table th, .task-table td { padding: 12px 14px; text-align: left; vertical-align: middle; }
+    .task-table thead th { font-size: 12px; text-transform: uppercase; color: #64748B; letter-spacing: 0.04em; background: #F8FAFC; border-bottom: 1px solid #E5E7EB; }
+    .task-table tbody tr { border-bottom: 1px solid #F1F5F9; }
+
+    .btn-primary {
+      background-color: #10B981; color: white; padding: 8px 16px; border-radius: 8px;
+      text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+      border: none; cursor: pointer; transition: 0.2s;
+    }
+    .btn-primary:hover { background-color: #059669; }
+    .btn-action {
+      background-color: #F8FAFC; color: #475569; padding: 6px 12px; border-radius: 6px;
+      text-decoration: none; font-weight: 600; font-size: 0.85rem; transition: 0.2s;
+      border: 1px solid #E2E8F0; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .btn-action:hover { background-color: #E2E8F0; color: #1E293B; }
+    .btn-action.danger { color: #EF4444; background-color: #FEF2F2; border-color: #FCA5A5; }
+    .btn-action.danger:hover { background-color: #FEE2E2; color: #DC2626; }
+    .row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    .messages { list-style: none; padding: 0; margin: 0 0 16px; }
+    .messages li { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+    .messages li.error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .messages li.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+
+    .filter-input { padding: 8px 12px; border: 1px solid #E5E7EB; border-radius: 8px; font-size: 14px; font-family: inherit; }
+
+    /* Contenitore più largo del default (920px): tabelle con molte colonne */
+    .task-page .toolbar, .task-page .table-card, .task-page .kpi-row, .task-page .messages, .task-page .reserved-banner, .task-page .page-nav {
+      max-width: 1180px; margin-left: auto; margin-right: auto; box-sizing: border-box;
+    }
+    .task-page .kpi-row, .task-page .messages, .task-page .reserved-banner { padding-left: 22px; padding-right: 22px; }
+    .task-page .reserved-banner { padding: 12px 16px; width: calc(100% - 44px); }
+    .task-page .table-card { padding: 0; max-width: 1136px; width: calc(100% - 44px); }
+  </style>
+
+  <section class="page task-page">
+    <header class="page__header">
+      <h1 class="page__title">TASK</h1>
+    </header>
+
+    {# --- Tabs --- #}
+    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:24px; border-bottom:1px solid #E2E8F0; padding-bottom:15px; flex-wrap:wrap;">
+      <a href="?tab=mie" class="tab-button {% if current_tab == 'mie' %}active{% endif %}">LE MIE TASK</a>
+      {% for slug, label in area_tabs.items %}
+        <a href="?tab={{ slug }}" class="tab-button {% if current_tab == slug %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if current_tab == 'mie' and not has_socio %}
+      <div class="messages"><li class="error">Il tuo account non è collegato a nessun socio attivo (email @jesap non trovata in SOCI): non possiamo mostrarti le tue task.</li></div>
+    {% endif %}
+
+    {# --- KPI --- #}
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Da iniziare</div><div class="kpi-value">{{ kpi.da_iniziare }}</div></div>
+      <div class="kpi-card"><div class="kpi-label">In corso</div><div class="kpi-value">{{ kpi.in_corso }}</div></div>
+      <div class="kpi-card alert"><div class="kpi-label">Scadute</div><div class="kpi-value">{{ kpi.scadute }}</div></div>
+      <div class="kpi-card win"><div class="kpi-label">Completate</div><div class="kpi-value">{{ kpi.completate }}</div></div>
+    </div>
+
+    {# --- Filtri --- #}
+    <div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:12px;">
+      <form method="get" action="" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input type="hidden" name="tab" value="{{ current_tab }}">
+        <input type="search" name="q" value="{{ search_query }}" placeholder="Cerca task, persona, competenza..." class="filter-input" style="min-width:240px;">
+        <select name="stato" class="filter-input">
+          <option value="aperte" {% if stato_filter == 'aperte' %}selected{% endif %}>Aperte</option>
+          <option value="" {% if not stato_filter %}selected{% endif %}>Tutte</option>
+          {% for s in stati %}
+            <option value="{{ s }}" {% if s == stato_filter %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px; color:#334155; padding:0 8px;">
+          <input type="checkbox" name="scadute" value="1" {% if scadute_only %}checked{% endif %}> Solo scadute
+        </label>
+        <button type="submit" class="sort__button"><span>Applica</span></button>
+      </form>
+
+      <div class="top-sort-controls">
+        <span class="sort__label">Ordina per:</span>
+        <select id="top-sort-select" class="top-sort-select" data-current-dir="{{ current_dir|default:'asc' }}">
+          <option value="scadenza" {% if current_sort == 'scadenza' %}selected{% endif %}>Scadenza</option>
+          <option value="priorita" {% if current_sort == 'priorita' %}selected{% endif %}>Priorità</option>
+          <option value="stato" {% if current_sort == 'stato' %}selected{% endif %}>Stato</option>
+          <option value="titolo" {% if current_sort == 'titolo' %}selected{% endif %}>Titolo</option>
+          <option value="creato_il" {% if current_sort == 'creato_il' %}selected{% endif %}>Creazione</option>
+          <option value="modificato_il" {% if current_sort == 'modificato_il' %}selected{% endif %}>Ultima modifica</option>
+        </select>
+        <button id="top-sort-dir" class="icon-button" type="button"
+                style="transition: transform 0.2s; transform: {% if current_dir == 'desc' %}rotate(180deg){% else %}rotate(0deg){% endif %};"
+                title="Inverti direzione (asc/desc)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 10l4 4 4-4"/></svg>
+        </button>
+      </div>
+    </div>
+
+    {# --- Tabella --- #}
+    <div class="table-card" style="background:#fff; border:1px solid #E5E7EB; border-radius:12px; overflow:auto;">
+      <div style="display:flex; justify-content:flex-end; padding:16px 16px 0 16px; margin-bottom:12px;">
+        <a href="{% url 'task_create' %}{% if current_area %}?tab={{ current_tab }}{% endif %}" class="btn-primary">
+          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+          Nuova Task
+        </a>
+      </div>
+      <table class="task-table">
+        <thead>
+          <tr>
+            <th style="min-width:240px;">Task</th>
+            {% if current_tab == 'mie' %}<th>Area</th>{% endif %}
+            <th style="min-width:200px;">Assegnatari</th>
+            <th>Stato</th>
+            <th>Priorità</th>
+            <th>Effort</th>
+            <th>Scadenza</th>
+            <th style="text-align:right;">Azioni</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+        {% for t in tasks %}
+          <tr class="task-row {% if t.is_completata %}is-done{% endif %}" data-row-id="task-{{ t.pk }}">
+            <td class="task-title">
+              <strong>{{ t.titolo }}</strong>
+              {% if t.competenze_list %}<div>{% for c in t.competenze_list %}<span class="tag">{{ c }}</span>{% endfor %}</div>{% endif %}
+            </td>
+            {% if current_tab == 'mie' %}<td>{{ t.area }}</td>{% endif %}
+            <td style="font-size:13px;">
+              {% for s in t.assegnatari.all %}{{ s.nome_e_cognome }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if t.altri_assegnatari %}{% if t.assegnatari.all %}, {% endif %}<span style="color:#94A3B8;">{{ t.altri_assegnatari }}</span>{% endif %}
+              {% if not t.assegnatari.all and not t.altri_assegnatari %}-{% endif %}
+            </td>
+            <td>
+              <form method="post" action="{% url 'task_set_stato' t.pk %}" class="js-no-toggle" style="margin:0;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <select name="stato" class="stato-select stato-{{ t.stato|cut:' ' }}" onchange="this.form.submit()" aria-label="Cambia stato">
+                  {% for s in stati %}<option value="{{ s }}" {% if s == t.stato %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                </select>
+              </form>
+            </td>
+            <td>{% if t.priorita %}<span class="badge badge-priorita-{{ t.priorita }}">{{ t.priorita }}</span>{% else %}-{% endif %}</td>
+            <td>{% if t.effort %}<span class="badge badge-effort">{{ t.effort }}</span>{% else %}-{% endif %}</td>
+            <td style="white-space:nowrap;">
+              {% if t.scadenza %}
+                <span class="{% if t.scaduta %}due-late{% endif %}" {% if t.scaduta %}title="Scaduta"{% endif %}>{{ t.scadenza|date:"d/m/Y" }}</span>
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              <div class="row-actions js-no-toggle">
+                <a href="{% url 'task_update' t.pk %}" class="btn-action">Modifica</a>
+                <a href="{% url 'task_delete' t.pk %}" class="btn-action danger">Elimina</a>
+              </div>
+            </td>
+          </tr>
+          <tr class="task-details-row" id="task-{{ t.pk }}">
+            <td colspan="{% if current_tab == 'mie' %}8{% else %}7{% endif %}">
+              <div class="task-details-wrap" style="padding:16px 20px;">
+                {% if t.descrizione %}<p style="margin:0 0 12px; white-space:pre-line;">{{ t.descrizione }}</p>{% endif %}
+                {% if t.link_list %}
+                  <div style="margin-bottom:12px;"><strong>Link:</strong>
+                    <ul style="margin:6px 0 0; padding-left:18px;">
+                      {% for l in t.link_list %}<li>{% if l|is_http_url %}<a href="{{ l }}" target="_blank" rel="noopener noreferrer">{{ l|truncatechars:90 }}</a>{% else %}{{ l }}{% endif %}</li>{% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
+                <div style="font-size:12px; color:#64748B;">
+                  Creata da {{ t.creato_da|default:"-" }} il {{ t.creato_il|date:"d/m/Y H:i" }}
+                  · Ultima modifica {{ t.modificato_da|default:"-" }} il {{ t.modificato_il|date:"d/m/Y H:i" }}
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" style="text-align:center; padding:40px; color:#94A3B8;">
+            Nessuna task trovata.
+            {% if search_query or scadute_only or stato_filter != 'aperte' %}<br><a href="?tab={{ current_tab }}">Reset filtri</a>{% endif %}
+          </td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# --- Paginazione --- #}
+    {% if page_obj.has_other_pages %}
+      <nav style="display:flex; justify-content:center; align-items:center; gap:14px; margin-top:16px;">
+        {% if page_obj.has_previous %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}{% if scadute_only %}&scadute=1{% endif %}&sort={{ current_sort }}&dir={{ current_dir }}&page={{ page_obj.previous_page_number }}" class="sort__button" style="text-decoration:none;">&laquo; Prec</a>
+        {% endif %}
+        <span style="font-size:14px; color:#64748B;">Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?tab={{ current_tab }}&q={{ search_query|urlencode }}&stato={{ stato_filter|urlencode }}{% if scadute_only %}&scadute=1{% endif %}&sort={{ current_sort }}&dir={{ current_dir }}&page={{ page_obj.next_page_number }}" class="sort__button" style="text-decoration:none;">Succ &raquo;</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  </section>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const tbody = document.getElementById("table-body");
+      if (tbody) {
+        tbody.querySelectorAll(".task-row").forEach(function (row) {
+          row.addEventListener("click", function (e) {
+            if (e.target.closest(".js-no-toggle, a, select, button")) return;
+            const detail = document.getElementById(row.dataset.rowId);
+            const wrap = detail && detail.querySelector(".task-details-wrap");
+            const isOpen = row.classList.toggle("expanded");
+            if (wrap) wrap.style.maxHeight = isOpen ? wrap.scrollHeight + "px" : "0px";
+          });
+        });
+      }
+
+      const topSelect = document.getElementById("top-sort-select");
+      const topDirBtn = document.getElementById("top-sort-dir");
+      function navigateWithSort(sortKey, dir) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("sort", sortKey);
+        params.set("dir", dir);
+        params.delete("page");
+        window.location.search = params.toString();
+      }
+      if (topSelect && topDirBtn) {
+        topSelect.addEventListener("change", function (e) {
+          navigateWithSort(e.target.value, topSelect.dataset.currentDir || "asc");
+        });
+        topDirBtn.addEventListener("click", function () {
+          const cur = topSelect.dataset.currentDir || "asc";
+          navigateWithSort(topSelect.value, cur === "asc" ? "desc" : "asc");
+        });
+      }
+    });
+  </script>
+{% endblock %}

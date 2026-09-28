@@ -1,0 +1,35 @@
+{% extends "dashboard/base_figma.html" %}
+{% block title %}JESAP Gestionale - Gruppo colloquio{% endblock %}
+{% block head %}{% include "dashboard/recruitment/_form_styles.html" %}{% endblock %}
+{% block content %}
+<section class="page">
+  <header class="page__header"><h1 class="page__title">{% if gruppo %}GRUPPO {{ gruppo.numero }}{% else %}NUOVO GRUPPO{% endif %}</h1></header>
+  <div class="form-container">
+    <a class="back-link" href="{% url 'rec_tab' sessione.pk 'gruppi' %}">← Colloqui di gruppo · {{ sessione.nome }}</a>
+    <form method="post" class="form-card" novalidate>
+      {% csrf_token %}
+      <div class="form-grid">
+        {% include "dashboard/recruitment/_field.html" with field=form.numero %}
+        {% include "dashboard/recruitment/_field.html" with field=form.data %}
+        {% include "dashboard/recruitment/_field.html" with field=form.ora %}
+        {% include "dashboard/recruitment/_field.html" with field=form.luogo %}
+        {% include "dashboard/recruitment/_field.html" with field=form.recruiter_1 %}
+        {% include "dashboard/recruitment/_field.html" with field=form.recruiter_2 %}
+        {% include "dashboard/recruitment/_field.html" with field=form.recruiter_3 %}
+        {% include "dashboard/recruitment/_field.html" with field=form.note full=1 %}
+      </div>
+      <div class="form-actions">
+        {% if gruppo %}<button type="submit" name="azione" value="elimina" class="btn-danger" formnovalidate onclick="return confirm('Eliminare il gruppo {{ gruppo.numero }}? I candidati resteranno senza gruppo.');">Elimina gruppo</button>{% endif %}
+        <a href="{% url 'rec_tab' sessione.pk 'gruppi' %}" class="btn-action">Annulla</a>
+        <button type="submit" class="btn-primary">Salva</button>
+      </div>
+    </form>
+    {% if gruppo %}
+      <div class="form-card">
+        <h2 class="form-section__title">Candidati nel gruppo ({{ candidati|length }})</h2>
+        {% for c in candidati %}<div><a href="{% url 'rec_candidato' c.pk %}">{{ c.cognome }} {{ c.nome }}</a> <span class="muted">· {{ c.area_1 }}</span></div>{% empty %}<p class="field-help">Assegna i candidati dalla tabella "Colloqui di gruppo".</p>{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

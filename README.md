@@ -19,6 +19,7 @@
 - [Funzionalità](#funzionalità)
 - [Stack tecnologico](#stack-tecnologico)
 - [Architettura](#architettura)
+- [Avvio in locale](#avvio-in-locale)
 - [Workflow di sviluppo](#workflow-di-sviluppo-consigliato)
 - [Deployment](#deployment)
 - [Roadmap](#roadmap)
@@ -34,6 +35,9 @@ JESAP CRM è un sistema gestionale custom-built per **JESAP**, la Junior Enterpr
 - 👥 **Anagrafica soci** — board, aree di competenza, ruoli, periodo associativo
 - 🤝 **Partnership** — attive, lead in trattativa, non finalizzate, con tracking documentale
 - 📋 **Progetti** — clienti, PM assegnati, stato avanzamento, fatturato, soddisfazione team/cliente
+- ✅ **Task** — task per area (D&A, BD, HR, M&C) ex Notion, vista "Le mie task", assegnatari da SOCI
+- 🔑 **Credenziali** — area riservata CdA + responsabili, password cifrate (Fernet), accessi tracciati
+- 🎯 **Recruitment** — candidature dal form del sito (sync Google Sheet → CRM), screening CV, colloqui di gruppo e individuali, periodo di prova, email di esito via Resend
 - 🔐 **Autenticazione & RBAC** — login con email/username, registrazione su invito, ruoli Editor/Admin
 - 📧 **Comunicazioni** — reset password via email transazionale (Resend)
 
@@ -59,7 +63,9 @@ Tutto integrato con **sincronizzazione bidirezionale Google Sheets ↔ Supabase*
 - **Sorting server-side cross-page** con parser type-aware (date IT/ISO, currency EUR formato 1.234,56, percentuali, testo)
 - **Paginazione** con preservation di filtri e sort tra le pagine
 - **Status workflow** per Partnership (Attiva ↔ Trattativa ↔ Non finalizzata)
-- **Audit log** automatico delle modifiche (`AuditLog` + middleware `CurrentUserMiddleware`)
+- **Audit log** automatico delle modifiche (`AuditLog` + middleware `CurrentUserMiddleware`), incluse le visualizzazioni delle credenziali
+- **Recruitment**: accesso CdA + Head of + soci autorizzati dal proprio Head of; tabelle editabili come il foglio; medie calcolate (gruppo = 30% output + 70% soft); invio email in blocco con registro; setup sync in `integrations/recruitment_form_sync/SETUP.md`
+- **Task**: cambio stato rapido dalla lista, scadute calcolate solo su task aperte, import da Notion con `python manage.py import_notion_tasks <csv> --area "D&A"`
 
 ### 📋 Cataloghi e taxonomy
 - Single source of truth in `dashboard/choices.py` allineato col foglio ufficiale Soci
@@ -172,6 +178,26 @@ Tutto integrato con **sincronizzazione bidirezionale Google Sheets ↔ Supabase*
 - **Source of truth distribuita**: Google Sheets per data entry, Supabase per source of truth runtime, Django per business logic
 - **Stateless app**: nessuna sessione su disco, scaling orizzontale Railway-ready
 - **Fail-fast in prod**: settings.py lancia `ImproperlyConfigured` se mancano env vars critiche
+
+---
+
+## Avvio in locale
+
+Senza `.env` il progetto usa **SQLite** (`db.sqlite3`) ed email stampate in console: nessun accesso a Supabase.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt pytest pytest-django
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py setup_local_db --demo   # tabelle Supabase (managed=False) + dati demo
+.venv/bin/python manage.py bootstrap_admin          # superuser di sviluppo (solo DEBUG=True)
+.venv/bin/python manage.py runserver
+```
+
+Poi apri <http://127.0.0.1:8000/>. Test: `.venv/bin/python -m pytest`.
+
+> In SQLite `valore_ponderato` e `alert_follow_up` delle lead restano vuoti: li calcolano colonna GENERATED e trigger di Postgres.
+> Per puntare a Supabase imposta `DATABASE_URL` nel `.env` — attenzione: è il database di produzione.
 
 ---
 
@@ -305,6 +331,9 @@ Variabili critiche (vedi `.env.example`):
 | `RESEND_API_KEY` | `re_xxxxxxxxx` | ✅ |
 | `DEFAULT_FROM_EMAIL` | `JESAP CRM <noreply@jesap.it>` | ✅ |
 | `USE_POSTGRES` | `1` | ✅ |
+| `RECRUITMENT_WEBHOOK_TOKEN` | `<stringa casuale>` (vedi `.env.example`) | ✅ per ricevere le candidature dal foglio risposte |
+| `RECRUITMENT_REPLY_TO` | `hr@jesap.it` | Opzionale — dove arrivano le risposte dei candidati |
+| `CREDENTIALS_ENCRYPTION_KEY` | `<chiave Fernet>` (vedi `.env.example`) | ✅ per l'area Credenziali — **se persa, le password salvate non sono recuperabili** |
 | `PGSSLMODE` | `require` | Consigliato |
 | `LOG_LEVEL` | `INFO` | Opzionale |
 

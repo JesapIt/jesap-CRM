@@ -1,0 +1,56 @@
+{% extends "dashboard/base_figma.html" %}
+
+{% block title %}JESAP Gestionale - Elimina Credenziale{% endblock %}
+
+{% block head %}
+<style>
+  .form-container { max-width: 640px; margin: 24px auto; padding: 0 20px; }
+  .form-card { background: #fff; padding: 32px; border-radius: 12px; box-shadow: var(--shadow); border: 2px solid var(--soft-line); }
+  .confirm-title { font-size: 22px; font-weight: 700; color: var(--brand); margin: 0 0 8px 0; }
+  .confirm-lead { color: var(--ink); margin: 0 0 20px 0; font-size: 15px; }
+  .confirm-details { background: rgba(138, 59, 134, 0.05); border: 1px solid var(--soft-line); border-radius: 10px; padding: 16px 18px; margin-bottom: 20px; }
+  .confirm-details dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
+  .confirm-details dt { color: var(--muted); font-weight: 600; }
+  .confirm-details dd { margin: 0; color: var(--ink); }
+  .confirm-warning { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; padding: 12px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 22px; }
+  .form-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+  .btn-action, .btn-danger { height: 42px; padding: 0 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; border: 2px solid var(--soft-line); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  .form-container .btn-action { background: #fff; color: var(--brand); }
+  .form-container .btn-action:hover { background: var(--soft-line); color: var(--brand-ink); }
+  .form-container .btn-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+  .form-container .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="page">
+  <header class="page__header">
+    <h1 class="page__title">ELIMINA CREDENZIALE</h1>
+  </header>
+
+  <div class="form-container">
+    <div class="form-card">
+      <h2 class="confirm-title">Conferma eliminazione</h2>
+      <p class="confirm-lead">Sei sicuro di voler eliminare questa credenziale? Password e note andranno perse.</p>
+
+      <div class="confirm-details">
+        <dl>
+          <dt>Servizio</dt><dd>{{ cred.servizio }}</dd>
+          <dt>Area</dt><dd>{{ cred.area }}</dd>
+          <dt>Utente</dt><dd>{{ cred.username|default:"-" }}</dd>
+        </dl>
+      </div>
+
+      <div class="confirm-warning">Questa azione non può essere annullata.</div>
+
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-actions">
+          <a href="{% url 'credenziali' %}" class="btn-action">Annulla</a>
+          <button type="submit" class="btn-danger">Elimina</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

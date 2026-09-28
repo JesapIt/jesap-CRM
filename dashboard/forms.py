@@ -1,91 +1,32 @@
 import re
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from decimal import Decimal
+from random import randint
 
+from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm
-from django import forms
-from .models import Partnership, Progetti
+from django.core.exceptions import ValidationError
+from django.core.validators import DecimalValidator, URLValidator
+from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django.utils import timezone
+
 from . import choices as ch
-from datetime import datetime
+from .models import Credenziale, Lead, Partnership, Progetti, Soci, Task
+from .utils.parsing import parse_date_text, parse_money
 
-
-MONTH_CHOICES = [
-    ('', 'Mese'),
-    ('01', '01 - Janeiro'),
-    ('02', '02 - Fevereiro'),
-    ('03', '03 - Março'),
-    ('04', '04 - Abril'),
-    ('05', '05 - Maio'),
-    ('06', '06 - Junho'),
-    ('07', '07 - Julho'),
-    ('08', '08 - Agosto'),
-    ('09', '09 - Setembro'),
-    ('10', '10 - Outubro'),
-    ('11', '11 - Novembro'),
-    ('12', '12 - Dezembro'),
-]
-
-YEAR_CHOICES = [('', 'Anno')] + [(str(year), str(year)) for year in range(2000, datetime.now().year + 6)]
-
-
-class MonthYearWidget(forms.MultiWidget):
-    def __init__(self, attrs=None):
-        widgets = [
-            forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 120px;'}, choices=MONTH_CHOICES),
-            forms.Select(attrs={'class': 'form-control', 'style': 'max-width: 120px;'}, choices=YEAR_CHOICES),
-        ]
-        super().__init__(widgets, attrs)
-
-    def decompress(self, value):
-        if value:
-            value = str(value).strip()
-            if '/' in value:
-                month, year = value.split('/', 1)
-                return [month.zfill(2), year]
-        return [None, None]
-
-
-class MonthYearField(forms.MultiValueField):
-    widget = MonthYearWidget
-
-    def __init__(self, *args, **kwargs):
-        fields = (
-            forms.ChoiceField(choices=MONTH_CHOICES, required=False),
-            forms.ChoiceField(choices=YEAR_CHOICES, required=False),
-        )
-        kwargs.setdefault('require_all_fields', False)
-        super().__init__(fields=fields, *args, **kwargs)
-
-    def compress(self, data_list):
-        if not data_list:
-            return ''
-
-        month = (data_list[0] or '').strip()
-        year = (data_list[1] or '').strip()
-
-        if not month and not year:
-            return ''
-
-        if month and year:
-            return f'{month}/{year}'
-
-        raise forms.ValidationError('Il Periodo deve includere mese e anno.')
 
 DATE_PLACEHOLDER = 'GG/MM/AAAA'
 
 
 def _normalize_date_text(value):
-    if value in (None, ''):
+    if value in (None, '') or not str(value).strip():
         return ''
-    txt = str(value).strip()
-    if not txt:
-        return ''
-    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%y'):
-        try:
-            return datetime.strptime(txt, fmt).strftime('%d/%m/%Y')
-        except ValueError:
-            continue
-    raise forms.ValidationError('Data non valida. Usa GG/MM/AAAA.')
+    parsed = parse_date_text(value)
+    if parsed is None:
+        raise forms.ValidationError('Data non valida. Usa GG/MM/AAAA.')
+    return parsed.strftime('%d/%m/%Y')
 
 
 class PartnershipForm(forms.ModelForm):
@@ -371,15 +312,9 @@ class NonFinalizzataForm(forms.ModelForm):
 
 
 def _parse_date_ddmmyyyy_to_iso(value):
-    if not value:
-        return ''
-    value = str(value).strip()
-    if not value:
-        return ''
-    try:
-        return datetime.strptime(value, '%d/%m/%Y').strftime('%Y-%m-%d')
-    except ValueError:
-        return ''
+    """Valore DB (qualsiasi formato data noto) → ISO per <input type="date">."""
+    parsed = parse_date_text(value)
+    return parsed.isoformat() if parsed else ''
 
 
 def _format_iso_to_ddmmyyyy(value):
@@ -392,19 +327,9 @@ def _format_iso_to_ddmmyyyy(value):
 
 
 def _parse_money_to_decimal(raw):
-    if raw in (None, ''):
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    text = re.sub(r'[^\d,.\-]', '', text)
-    if ',' in text and '.' in text:
-        text = text.replace('.', '').replace(',', '.')
-    elif ',' in text:
-        text = text.replace(',', '.')
     try:
-        return Decimal(text)
-    except InvalidOperation:
+        return parse_money(raw)
+    except ValueError:
         raise forms.ValidationError('Inserisci un numero valido (es: 880).')
 
 
@@ -761,6 +686,225 @@ class ProgettoForm(forms.ModelForm):
         return anno
 
 
+# ============================================================
+# LEAD (BD pipeline)
+# ============================================================
+LEAD_ID_MAX_ATTEMPTS = 5
+
+
+def _generate_lead_id():
+    """Formato Apps Script: LEAD-YYYYMMDD-HHMMSS-N (ora locale Europe/Rome)."""
+    now = timezone.localtime()
+    return f"LEAD-{now:%Y%m%d-%H%M%S}-{randint(1, 99)}"
+
+
+def _insert_lead_with_new_id(instance):
+    """INSERT forzato con PK nuova: mai UPDATE silenzioso su una lead esistente."""
+    for _ in range(LEAD_ID_MAX_ATTEMPTS):
+        instance.lead_id = _generate_lead_id()
+        if Lead.objects.filter(pk=instance.lead_id).exists():
+            continue
+        try:
+            with transaction.atomic():
+                instance.save(force_insert=True)
+            return
+        except IntegrityError:
+            continue
+    raise IntegrityError('Impossibile generare un Lead ID univoco.')
+
+
+class LeadForm(forms.ModelForm):
+    """
+    Form CRUD per Lead BD.
+    PK `lead_id` auto-generata in create (formato LEAD-YYYYMMDD-HHMMSS-N)
+    e readonly in update.
+    """
+
+    # Forecasting: input semplice numero, parse stesso pattern di ProgettoForm
+    valore_stimato_input = forms.CharField(
+        required=False,
+        label='Valore stimato (€)',
+        help_text='Solo il numero (es. 880 o 1.234,56)',
+        widget=forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'decimal', 'placeholder': 'Es: 880'}),
+    )
+
+    fase_attuale = forms.ChoiceField(
+        choices=ch.LEAD_FASE_CHOICES, required=False, label='Fase pipeline',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    stato_lead = forms.ChoiceField(
+        choices=ch.LEAD_STATO_CHOICES, required=False, label='Stato lead',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    stato_contratto = forms.ChoiceField(
+        choices=ch.LEAD_CONTRATTO_CHOICES, required=False, label='Stato contratto',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    priorita = forms.ChoiceField(
+        choices=ch.LEAD_PRIORITA_CHOICES, required=False, label='Priorità',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+
+    class Meta:
+        model = Lead
+        fields = [
+            'lead_id',
+            'data_primo_contatto',
+            'azienda', 'titolare_azienda',
+            'referente', 'nome_referente', 'cognome_referente', 'email_referente', 'telefono',
+            'prodotto_servizio', 'area', 'owner',
+            'fase_attuale', 'stato_lead', 'stato_contratto', 'priorita',
+            'probabilita',
+            'prossima_azione', 'data_prossima_azione',
+            'drive_folder_id', 'link_cartella_drive',
+        ]
+        labels = {
+            'lead_id': 'Lead ID',
+            'data_primo_contatto': 'Data primo contatto',
+            'azienda': 'Azienda / Startup-PMI',
+            'titolare_azienda': 'Titolare azienda',
+            'referente': 'Referente (full name)',
+            'nome_referente': 'Nome referente',
+            'cognome_referente': 'Cognome referente',
+            'email_referente': 'Email referente',
+            'telefono': 'Telefono',
+            'prodotto_servizio': 'Prodotto / Servizio',
+            'area': 'Area (es. "M&C, HR")',
+            'owner': 'Owner / PM',
+            'probabilita': 'Probabilità (0-100)',
+            'prossima_azione': 'Prossima azione',
+            'data_prossima_azione': 'Data prossima azione',
+            'drive_folder_id': 'Drive Folder ID',
+            'link_cartella_drive': 'Link cartella Drive',
+        }
+        widgets = {
+            'lead_id': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'LEAD-YYYYMMDD-HHMMSS-N (auto)'}),
+            'data_primo_contatto': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
+            'azienda': forms.TextInput(attrs={'class': 'form-control'}),
+            'titolare_azienda': forms.TextInput(attrs={'class': 'form-control'}),
+            'referente': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nome Cognome'}),
+            'nome_referente': forms.TextInput(attrs={'class': 'form-control'}),
+            'cognome_referente': forms.TextInput(attrs={'class': 'form-control'}),
+            'email_referente': forms.EmailInput(attrs={'class': 'form-control'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control'}),
+            'prodotto_servizio': forms.TextInput(attrs={'class': 'form-control'}),
+            'area': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'CSV multi-area: M&C, HR'}),
+            'owner': forms.TextInput(attrs={'class': 'form-control'}),
+            'probabilita': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 100, 'inputmode': 'numeric'}),
+            'prossima_azione': forms.TextInput(attrs={'class': 'form-control'}),
+            'data_prossima_azione': forms.DateInput(format='%Y-%m-%d', attrs={'class': 'form-control', 'type': 'date'}),
+            'drive_folder_id': forms.TextInput(attrs={'class': 'form-control'}),
+            'link_cartella_drive': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://drive.google.com/...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        instance = kwargs.get('instance')
+        is_creation = instance is None or not (instance.lead_id or '').strip()
+
+        if is_creation:
+            # PK auto-generata: nasconde campo
+            self.fields.pop('lead_id', None)
+        else:
+            # Update: PK readonly
+            self.fields['lead_id'].disabled = True
+            self.fields['lead_id'].help_text = 'Chiave primaria: non modificabile.'
+
+        # Pre-popola valore_stimato_input da Decimal field reale
+        if instance is not None and instance.valore_stimato is not None:
+            self.initial['valore_stimato_input'] = str(instance.valore_stimato)
+
+        # Normalizza choices legacy case-insensitive
+        if instance is not None:
+            for f, vals in (
+                ('fase_attuale', ch.LEAD_FASE_VALUES),
+                ('stato_lead', ch.LEAD_STATO_VALUES),
+                ('stato_contratto', ch.LEAD_CONTRATTO_VALUES),
+                ('priorita', ch.LEAD_PRIORITA_VALUES),
+            ):
+                self.initial[f] = ch.normalize_to_choice(getattr(instance, f, None), vals)
+
+    def clean_lead_id(self):
+        # In edit: forza valore originale (preserva PK contro tamper client-side)
+        if self.instance and self.instance.lead_id:
+            return self.instance.lead_id
+        return (self.cleaned_data.get('lead_id') or '').strip()
+
+    def clean_azienda(self):
+        v = (self.cleaned_data.get('azienda') or '').strip()
+        if not v:
+            raise forms.ValidationError("L'azienda è obbligatoria.")
+        return v
+
+    def clean_probabilita(self):
+        v = self.cleaned_data.get('probabilita')
+        if v in (None, ''):
+            return None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            raise forms.ValidationError('La probabilità deve essere un numero intero 0-100.')
+        if not (0 <= n <= 100):
+            raise forms.ValidationError('La probabilità deve essere tra 0 e 100.')
+        return n
+
+    def clean_email_referente(self):
+        v = (self.cleaned_data.get('email_referente') or '').strip().lower()
+        return v or None
+
+    def clean_valore_stimato_input(self):
+        try:
+            value = parse_money(self.cleaned_data.get('valore_stimato_input'))
+        except ValueError:
+            raise forms.ValidationError('Inserisci un numero valido (es: 880 o 1.234,56).')
+        if value is not None:
+            # numeric(12,2) su Postgres: oltre → errore DB (500)
+            DecimalValidator(max_digits=12, decimal_places=2)(value)
+        return value
+
+    # Select vuota → default DB (Postgres applica il DEFAULT solo se la colonna è omessa)
+    def clean_fase_attuale(self):
+        return self.cleaned_data.get('fase_attuale') or 'Nuovo'
+
+    def clean_stato_lead(self):
+        return self.cleaned_data.get('stato_lead') or 'Attiva'
+
+    def clean_stato_contratto(self):
+        return self.cleaned_data.get('stato_contratto') or None
+
+    def clean_priorita(self):
+        return self.cleaned_data.get('priorita') or None
+
+    def save(self, commit=True):
+        """
+        Override save per:
+        - Auto-generare lead_id in create (formato LEAD-YYYYMMDD-HHMMSS-N)
+        - Concatenare nome+cognome in `referente` se non fornito
+        - Mappare valore_stimato_input → valore_stimato Decimal
+        """
+        instance = super().save(commit=False)
+        creating = not (instance.lead_id or '').strip()
+
+        # Input vuoto → NULL (permette di cancellare il valore)
+        instance.valore_stimato = self.cleaned_data.get('valore_stimato_input')
+
+        # Auto-concatena referente se mancante
+        if not (instance.referente or '').strip():
+            parts = [instance.nome_referente, instance.cognome_referente]
+            joined = ' '.join(p for p in parts if p and p.strip())
+            if joined:
+                instance.referente = joined
+
+        if creating and commit:
+            _insert_lead_with_new_id(instance)
+        elif creating:
+            instance.lead_id = _generate_lead_id()
+        elif commit:
+            instance.save()
+        return instance
+
+
 class CaseInsensitivePasswordResetForm(PasswordResetForm):
     """
     Cerca gli utenti per email senza distinguere maiuscole/minuscole (PostgreSQL).
@@ -784,3 +928,144 @@ class CaseInsensitivePasswordResetForm(PasswordResetForm):
         return (
             user for user in active_users if user.has_usable_password()
         )
+
+
+class TaskForm(forms.ModelForm):
+    area = forms.ChoiceField(
+        choices=ch.TASK_AREA_CHOICES,
+        label='Area',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    stato = forms.ChoiceField(
+        choices=ch.TASK_STATO_CHOICES,
+        label='Stato',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    priorita = forms.ChoiceField(
+        choices=ch.TASK_PRIORITA_CHOICES,
+        required=False,
+        label='Priorità',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    effort = forms.ChoiceField(
+        choices=ch.TASK_EFFORT_CHOICES,
+        required=False,
+        label='Effort',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    assegnatari = forms.ModelMultipleChoiceField(
+        queryset=Soci.objects.none(),
+        required=False,
+        label='Assegnatari',
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    class Meta:
+        model = Task
+        fields = [
+            'titolo', 'area', 'competenza', 'stato', 'priorita', 'effort',
+            'scadenza', 'assegnatari', 'altri_assegnatari', 'descrizione', 'link',
+        ]
+        labels = {
+            'titolo': 'Titolo',
+            'competenza': 'Competenza',
+            'scadenza': 'Scadenza',
+            'altri_assegnatari': 'Altri assegnatari (non in SOCI)',
+            'descrizione': 'Descrizione',
+            'link': 'Link',
+        }
+        widgets = {
+            'titolo': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Aggiornare foglio soci'}),
+            'competenza': forms.TextInput(attrs={'class': 'form-control', 'list': 'competenze-suggerite', 'placeholder': 'Es: Data, Automations'}),
+            'scadenza': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'altri_assegnatari': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nomi separati da virgola'}),
+            'descrizione': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'link': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Un link per riga'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Soci attivi + eventuali assegnatari già presenti (anche se non più associati)
+        visibili = Q(status__iexact='Associato')
+        if self.instance.pk:
+            visibili |= Q(pk__in=self.instance.assegnatari.values('pk'))
+        field = self.fields['assegnatari']
+        field.queryset = Soci.objects.filter(visibili).order_by('nome_e_cognome')
+        field.label_from_instance = (
+            lambda s: ' · '.join(p for p in (s.nome_e_cognome or f'Socio #{s.pk}', s.area_di_appartenenza) if p)
+        )
+
+    def clean_competenza(self):
+        raw = self.cleaned_data.get('competenza') or ''
+        seen = []
+        for c in raw.split(','):
+            c = c.strip()
+            if c and c.lower() not in (s.lower() for s in seen):
+                seen.append(c)
+        return ', '.join(seen)
+
+    def clean_link(self):
+        raw = self.cleaned_data.get('link') or ''
+        links = [l.strip() for l in raw.splitlines() if l.strip()]
+        validate = URLValidator(schemes=['http', 'https'])
+        for l in links:
+            try:
+                validate(l)
+            except ValidationError:
+                raise forms.ValidationError(f'Link non valido: {l[:80]} (serve http:// o https://, uno per riga).')
+        return '\n'.join(links)
+
+
+class CredenzialeForm(forms.ModelForm):
+    area = forms.ChoiceField(
+        choices=ch.CREDENZIALI_AREA_CHOICES,
+        label='Area',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+    )
+    password = forms.CharField(
+        required=False,
+        strip=False,
+        label='Password',
+        widget=forms.PasswordInput(render_value=False, attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
+    )
+    note = forms.CharField(
+        required=False,
+        label='Note (cifrate)',
+        help_text='Es. codici di recupero, 2FA, istruzioni di accesso.',
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'autocomplete': 'off'}),
+    )
+
+    class Meta:
+        model = Credenziale
+        fields = ['area', 'servizio', 'url', 'username']
+        labels = {
+            'servizio': 'Servizio / account',
+            'url': 'Link di accesso',
+            'username': 'Utente / email',
+        }
+        widgets = {
+            'servizio': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Es: Canva, LinkedIn, Google Workspace'}),
+            'url': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://...'}),
+            'username': forms.TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields['password'].help_text = 'Lascia vuoto per mantenere la password attuale.'
+            self.initial['note'] = self.instance.note
+        else:
+            self.fields['password'].required = True
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        password = self.cleaned_data.get('password')
+        if password:
+            instance.password = password
+        # Ri-cifra le note solo se cambiate (token Fernet diverso a ogni cifratura)
+        note = self.cleaned_data.get('note') or ''
+        if note != (self.initial.get('note') or ''):
+            instance.note = note
+        if commit:
+            instance.save()
+        return instance

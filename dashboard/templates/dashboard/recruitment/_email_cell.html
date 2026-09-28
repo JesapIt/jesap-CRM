@@ -1,0 +1,6 @@
+{% for label, st in r.email %}
+  <div style="margin:1px 0;">
+    {% if r.email|length > 1 %}<span class="muted" style="font-size:11px;">{{ label }}:</span>{% endif %}
+    <span class="email-badge email-{{ st.stato }}" {% if st.quando %}title="Inviata il {{ st.quando|date:'d/m/Y H:i' }}"{% endif %}>{% if st.stato == 'inviata' %}✓ {% endif %}{{ st.label }}</span>
+  </div>
+{% endfor %}

@@ -1,3 +1,4 @@
+import hashlib
 import threading
 
 from django.contrib.contenttypes.models import ContentType
@@ -39,9 +40,14 @@ def _serialize(value):
 
 
 def snapshot(instance):
+    # Campi segreti: solo impronta sha256 (rileva la modifica, non rivela nulla).
+    secret = getattr(instance, 'AUDIT_SECRET_FIELDS', ())
     data = {}
     for field in instance._meta.concrete_fields:
-        data[field.name] = _serialize(getattr(instance, field.attname, None))
+        value = getattr(instance, field.attname, None)
+        if field.name in secret and value:
+            value = '<cifrato:' + hashlib.sha256(str(value).encode()).hexdigest()[:8] + '>'
+        data[field.name] = _serialize(value)
     return data
 
 

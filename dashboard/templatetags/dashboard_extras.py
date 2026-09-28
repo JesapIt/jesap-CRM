@@ -1,6 +1,18 @@
 from django import template
 
+from dashboard.utils.parsing import format_eur, parse_money
+
 register = template.Library()
+
+
+@register.filter
+def eur(value):
+    """'€ 1234,5' / '1.234,56' / '1234.5' → '1.234,50 €'. Testo non numerico invariato."""
+    try:
+        amount = parse_money(value)
+    except ValueError:
+        return value
+    return format_eur(amount) if amount is not None else value
 
 
 @register.filter
@@ -84,3 +96,22 @@ def user_first_name(user):
             return parts[0].title()
 
     return 'Socio'
+
+@register.filter
+def can_access_credenziali(user):
+    """True se l'utente è CdA o responsabile (vedi dashboard/permissions.py)."""
+    from dashboard.permissions import can_access_credenziali as _check
+    return _check(user)
+
+
+@register.filter
+def is_http_url(value):
+    """Solo link http(s) diventano <a href>: blocca `javascript:` & co."""
+    return str(value or '').strip().lower().startswith(('http://', 'https://'))
+
+
+@register.filter
+def can_access_recruitment(user):
+    """True se l'utente può vedere la sezione Recruitment."""
+    from dashboard.permissions import can_access_recruitment as _check
+    return _check(user)

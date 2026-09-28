@@ -33,7 +33,8 @@ print(f"[settings:env] presenti={_present} mancanti={_missing}",
 # Detect Railway runtime — se siamo lì, DATABASE_URL è OBBLIGATORIA
 ON_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
 
-DEBUG = _env('DEBUG', 'True') == 'True'
+# Default sicuro: su Railway senza DEBUG esplicito → produzione.
+DEBUG = _env('DEBUG', 'False' if ON_RAILWAY else 'True') == 'True'
 
 secret_key_env = os.getenv('SECRET_KEY')
 if not DEBUG and not secret_key_env:
@@ -54,6 +55,9 @@ else:
 
 # Application definition
 INSTALLED_APPS = [
+    # Prima di admin/auth: i template `registration/*` custom devono avere precedenza
+    # su quelli built-in (email reset password, subject).
+    'dashboard',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -61,7 +65,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'anymail',
-    'dashboard',
 ]
 
 MIDDLEWARE = [
@@ -166,14 +169,15 @@ else:
         DATABASES["default"]["OPTIONS"].setdefault("sslmode", os.getenv("PGSSLMODE", "require"))
 
 # Startup log: quale DB sta usando l'app. Visibile nei Deploy Logs Railway.
-import sys as _sys
 _engine = DATABASES["default"].get("ENGINE", "?")
 _host = DATABASES["default"].get("HOST", "(file)")
 print(
     f"[settings] DB engine={_engine} host={_host} DEBUG={DEBUG} "
     f"USE_POSTGRES={FORCE_POSTGRES} DATABASE_URL_set={bool(DATABASE_URL)}",
-    file=_sys.stderr, flush=True,
+    file=sys.stderr, flush=True,
 )
+
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -203,6 +207,9 @@ STORAGES = {
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 
+# Link reset password valido 24h (come dichiarato nel testo dell'email).
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
+
 # Sessione/Cookie hardening: HttpOnly sempre, Secure+SameSite in prod (DEBUG=False).
 # Django usa session cookies (server-side), nessun token in localStorage.
 SESSION_COOKIE_HTTPONLY = True
@@ -211,7 +218,6 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 if not DEBUG:
@@ -255,6 +261,26 @@ print(f"[settings:email] backend={EMAIL_BACKEND} resend_key={'<SET>' if RESEND_A
       f"from={DEFAULT_FROM_EMAIL}",
       file=sys.stderr, flush=True)
 LOGOUT_REDIRECT_URL = "login"
+
+# Area Credenziali: chiave Fernet (vedi dashboard/crypto.py). Mai nel DB.
+# Assente → il resto del CRM funziona, l'area Credenziali mostra un errore.
+CREDENTIALS_ENCRYPTION_KEY = _env('CREDENTIALS_ENCRYPTION_KEY', '')
+print(f"[settings:credenziali] encryption_key={'<SET>' if CREDENTIALS_ENCRYPTION_KEY else '<EMPTY>'}",
+      file=sys.stderr, flush=True)
+
+# Recruitment
+# Token condiviso con l'Apps Script del foglio risposte (webhook candidature).
+RECRUITMENT_WEBHOOK_TOKEN = _env('RECRUITMENT_WEBHOOK_TOKEN', '')
+# Mittente / risposte delle email ai candidati (vuoto → DEFAULT_FROM_EMAIL, nessun reply-to).
+RECRUITMENT_FROM_EMAIL = _env('RECRUITMENT_FROM_EMAIL', '')
+RECRUITMENT_REPLY_TO = _env('RECRUITMENT_REPLY_TO', '')
+# Invii in blocco: max email per click + pausa tra un invio e l'altro (rate limit Resend).
+RECRUITMENT_EMAIL_BATCH = 40
+RECRUITMENT_EMAIL_PAUSE = 0.5
+# Le tabelle recruitment si salvano in blocco (una riga = ~15 campi).
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
+print(f"[settings:recruitment] webhook_token={'<SET>' if RECRUITMENT_WEBHOOK_TOKEN else '<EMPTY>'} "
+      f"reply_to={RECRUITMENT_REPLY_TO or '<EMPTY>'}", file=sys.stderr, flush=True)
 
 # Logging: stdout (Railway raccoglie automaticamente)
 LOGGING = {

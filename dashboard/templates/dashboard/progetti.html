@@ -1,5 +1,6 @@
 {% extends "dashboard/base_figma.html" %}
 {% load static %}
+{% load dashboard_extras %}
 
 {% block title %}JESAP Gestionale - Progetti{% endblock %}
 
@@ -122,8 +123,6 @@
         </thead>
         <tbody id="table-body">
           {% for progetto in progetti %}
-            {% if progetto.nome_progetto and progetto.nome_progetto != 'None' and progetto.nome_progetto != 'null' %}
-              
               <tr class="progetti-row" aria-expanded="false">
                 <td data-sort-key="progetto">{{ progetto.nome_progetto }}</td>
                 <td data-sort-key="stato">{% if progetto.stato and progetto.stato != 'None' %}{{ progetto.stato }}{% else %}-{% endif %}</td>
@@ -133,13 +132,14 @@
                 <td data-sort-key="data_fine">{% if progetto.data_fine_contratto and progetto.data_fine_contratto != 'None' %}{{ progetto.data_fine_contratto }}{% else %}-{% endif %}</td>
                 <td data-sort-key="fatturato">
                   {% if progetto.fatturato_senza_iva_field and progetto.fatturato_senza_iva_field != 'None' and progetto.fatturato_senza_iva_field != 'null' %}
-                    <span class="js-money" data-money="{{ progetto.fatturato_senza_iva_field }}">{{ progetto.fatturato_senza_iva_field }}</span>
+                    {{ progetto.fatturato_senza_iva_field|eur }}
                   {% else %}
                     -
                   {% endif %}
                 </td>
                 {% if is_editor %}
                 <td style="text-align: right;" onclick="event.stopPropagation()">
+                  {% if progetto.codice_progetto %}
                   <div class="row-actions">
                     <a href="{% url 'progetto_update' progetto.codice_progetto %}" class="btn-action" onclick="event.stopPropagation()">
                       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -150,6 +150,7 @@
                       Elimina
                     </a>
                   </div>
+                  {% endif %}
                 </td>
                 {% endif %}
                 <td style="text-align: right;">
@@ -164,10 +165,10 @@
                       {% if progetto.pm and progetto.pm != 'None' %}<div><strong>PM:</strong> {{ progetto.pm }}</div>{% endif %}
                       
                       {% if progetto.costi and progetto.costi != 'None' %}
-                        <div><strong>Costi:</strong> <span class="js-money" data-money="{{ progetto.costi }}">{{ progetto.costi }}</span></div>
+                        <div><strong>Costi:</strong> {{ progetto.costi|eur }}</div>
                       {% endif %}
                       {% if progetto.profitti and progetto.profitti != 'None' %}
-                        <div><strong>Profitti:</strong> <span class="js-money" data-money="{{ progetto.profitti }}">{{ progetto.profitti }}</span></div>
+                        <div><strong>Profitti:</strong> {{ progetto.profitti|eur }}</div>
                       {% endif %}
 
                       {% if progetto.url_drive and progetto.url_drive != 'None' %}
@@ -183,8 +184,6 @@
                   </div>
                 </td>
               </tr>
-              
-            {% endif %}
           {% empty %}
             <tr><td colspan="{% if is_editor %}9{% else %}8{% endif %}">Nessun progetto trovato.</td></tr>
           {% endfor %}
@@ -208,20 +207,8 @@
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const tbody = document.getElementById("table-body");
-      const moneyFormatter = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
 
-      // 1. Formattazione Valuta Blindata
-      function formatCurrency() {
-        document.querySelectorAll(".js-money").forEach(el => {
-          const raw = el.getAttribute("data-money");
-          if (!raw || raw === 'None') return;
-          const n = parseFloat(String(raw).replace(',', '.').replace(/[^0-9.-]+/g, ""));
-          if (!isNaN(n)) el.textContent = moneyFormatter.format(n);
-        });
-      }
-      formatCurrency();
-
-      // 2. Toggle Dettagli
+      // 1. Toggle Dettagli
       tbody.addEventListener("click", (e) => {
         const row = e.target.closest(".progetti-row");
         if (!row) return;
@@ -233,7 +220,7 @@
         wrap.style.maxHeight = isExpanded ? wrap.scrollHeight + "px" : "0px";
       });
 
-      // 3. Sorting → SERVER-SIDE via URL params (?sort=&dir=)
+      // 2. Sorting → SERVER-SIDE via URL params (?sort=&dir=)
       // Ordina TUTTI i record cross-page, non solo la pagina visualizzata.
       const topSelect = document.getElementById("top-sort-select");
       const topDirBtn = document.getElementById("top-sort-dir");
