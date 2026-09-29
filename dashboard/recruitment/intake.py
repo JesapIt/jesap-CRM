@@ -6,7 +6,7 @@ le colonne sconosciute finiscono in `altre_risposte` (nessun dato perso).
 """
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
@@ -15,6 +15,8 @@ from django.utils import timezone
 from dashboard.models import Candidato
 
 TZ = ZoneInfo('Europe/Rome')
+# Stessa risposta reinviata (retry dello script): stessa email+nome entro questo scarto.
+STESSO_INVIO = timedelta(minutes=5)
 
 
 def normalizza(testo):
@@ -155,7 +157,10 @@ def registra_candidatura(sessione, risposta):
     esistenti = Candidato.objects.select_for_update().filter(sessione=sessione, email__iexact=email)
     data = campi.get('data_candidatura')
     for c in esistenti:
-        stessa_data = (c.data_candidatura == data) if data else True
+        # Tolleranza: un reinvio dal foglio può avere l'orario arrotondato al secondo.
+        stessa_data = (
+            c.data_candidatura is not None and abs(c.data_candidatura - data) <= STESSO_INVIO
+        ) if data else True
         if stessa_data and c.nome == campi.get('nome', '') and c.cognome == campi.get('cognome', ''):
             return c, 'duplicato'
 
