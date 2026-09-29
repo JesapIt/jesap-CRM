@@ -65,3 +65,34 @@ def test_sito_fonte_unisce_canale_e_dettaglio():
 def test_vecchio_form_curriculum_link_resta_cv():
     campi, _ = mappa_risposta({'Indirizzo di mail': 'a@b.it', 'Nome': 'A', 'Curriculum': 'https://drive.google.com/x'})
     assert campi['cv_url'] == 'https://drive.google.com/x'
+
+
+# ============================================================
+# Reinvii dal sito (retry di Codice.gs): mai falsi "Doppione"
+# ============================================================
+import pytest  # noqa: E402
+
+from dashboard.models import Candidato, RecruitmentSessione  # noqa: E402
+from dashboard.recruitment.intake import registra_candidatura  # noqa: E402
+
+
+@pytest.fixture
+def sessione_aperta(db):
+    return RecruitmentSessione.objects.create(nome='Test REC', aperta=True)
+
+
+@pytest.mark.django_db
+def test_reinvio_con_orario_arrotondato_e_duplicato_non_doppione(sessione_aperta):
+    """Invio diretto con millisecondi, retry dal foglio con i secondi arrotondati."""
+    primo, stato1 = registra_candidatura(sessione_aperta, {**SITO_ROW, 'Data invio': '2026-10-06T08:15:00.734Z'})
+    secondo, stato2 = registra_candidatura(sessione_aperta, {**SITO_ROW, 'Data invio': '2026-10-06T08:15:00.000Z'})
+    assert (stato1, stato2) == ('creato', 'duplicato')
+    assert secondo.pk == primo.pk
+    assert Candidato.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_nuova_candidatura_giorni_dopo_resta_doppione(sessione_aperta):
+    registra_candidatura(sessione_aperta, SITO_ROW)
+    _, stato = registra_candidatura(sessione_aperta, {**SITO_ROW, 'Data invio': '2026-10-09T10:00:00.000Z'})
+    assert stato == 'doppione'

@@ -1,5 +1,10 @@
 # Sync candidature: form del sito → Google Sheet → CRM
 
+> **Nuovo sito (form Join Us su jesap.it):** l'invio al CRM è già integrato nello script
+> del sito (`Codice.gs`, funzioni `sincronizzaCrm` / `installaCollegamentoCrm`, colonna
+> "CRM" nel foglio). `RecruitmentSync.gs` qui sotto serve solo per un foglio risposte di
+> **Google Form** classico: non installarli entrambi sullo stesso foglio.
+
 Il form sul sito continua a scrivere sul Google Sheet delle risposte (nessuna modifica al sito).
 Uno script sul foglio invia ogni 5 minuti le righe nuove al CRM, che le salva nella **sessione aperta**
 e (se attivo) manda al candidato l'email di conferma ricezione.
