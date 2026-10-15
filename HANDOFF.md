@@ -5,6 +5,63 @@ Le chat precedenti **non servono**: tutto ciò che contava è riassunto qui o è
 
 ---
 
+## 0. Come funziona — spiegato da zero
+
+```
+                 ┌──────────── GitHub (codice) ────────────┐
+                 │  JesapIt/jesap-CRM  ← PR ←  fork tuo     │
+                 └───────────────────┬──────────────────────┘
+                                     │ deploy automatico
+ utente ──https──► crm.jesap.it ──► RAILWAY (gira Django) ──► RESEND (manda email)
+                   (DNS Aruba)               │
+                                             ▼
+ Google Sheets ◄──── sync doppio ────► SUPABASE (database Postgres)
+ (Foglio Soci, DB Partnership)               ▲
+ Form "Join Us" del sito ──► Sheet risposte ─┘ (via CRM, ogni 5 min)
+```
+
+**Django (il CRM vero e proprio)**
+- È il codice del sito: pagine, login, permessi, form. Sta tutto in `dashboard/` (logica in `views.py`, tabelle in `models.py`, HTML in `templates/`).
+- Non salva dati in locale: legge e scrive sul database Supabase.
+- In locale, senza `.env`, usa un database finto (`db.sqlite3`) e stampa le email nel terminale: puoi rompere tutto senza toccare i dati veri.
+
+**Supabase (il database)**
+- È un database PostgreSQL in cloud, con un pannello web (Table Editor, SQL Editor). Progetto: **Gestionale**.
+- Due tipi di tabelle:
+  - **condivise con i fogli Google** (`SOCI`, `PARTNERSHIP`, `LEADS`, `PROGETTI`, `EVENTI`, `FORMAZIONI`): Django le usa ma non ne cambia mai la struttura (`managed=False`). Si modificano a mano su Supabase con script SQL.
+  - **del CRM** (`auth_user` per gli account, `TASKS`, `CREDENZIALI`, `REC_*` per il recruitment, `django_*`): le crea e aggiorna Django con le migrations, lanciate in automatico a ogni deploy.
+- Django si collega con `DATABASE_URL` (connessione Postgres diretta). Gli script Google si collegano con la REST API di Supabase e la chiave `service_role`, che bypassa ogni permesso: non deve mai finire in chiaro da nessuna parte.
+
+**Railway (il server)**
+- È dove il sito gira 24/7. Prende il codice da GitHub e, a ogni push sul branch collegato, ricostruisce e riavvia (`railway.json`: `collectstatic` → `migrate` → `gunicorn`). Controlla in Railway → *Settings → Source* quale repo e branch sono collegati.
+- Le **Variables** di Railway sono i segreti di produzione (chiavi, URL del DB, mittente email). Il codice le legge in `setup/settings.py`.
+- I **Deploy Logs** sono il primo posto dove guardare quando qualcosa non va: all'avvio stampano quale DB e quale backend email sono in uso.
+- `crm.jesap.it` punta a Railway grazie a un record CNAME nel DNS di Aruba.
+
+**Sync doppio Google Sheets ↔ Supabase**
+- Perché esiste: l'associazione lavora ancora sui fogli Google, il CRM lavora su Supabase. Il sync tiene le due copie uguali, così ognuno usa lo strumento che preferisce.
+- **Foglio → Supabase**: un Apps Script attaccato al foglio parte a ogni modifica (trigger `onEdit`/`onChange`) e aggiorna la riga su Supabase via REST (prova un update, se la riga non esiste la crea).
+- **Supabase → Foglio**: un *Database Webhook* di Supabase, a ogni insert, update o delete, chiama l'URL della Web App dello script (`doPost?secret=…`), che riscrive la riga sul foglio.
+- **Anti-loop**: quando la scrittura arriva da Supabase, lo script alza un flag (`_sb_writing`) per non rimandarla indietro all'infinito.
+- Tabelle coperte: **SOCI** (`integrations/sheets_supabase_sync/Code.gs`, tab "Soci total", intestazioni in riga 5) e **PARTNERSHIP** (`PartnershipCode.gs`, guida passo-passo in `PARTNERSHIP_SETUP.md`). **LEADS**: lo schema è pronto (`LEADS_SCHEMA.sql`), lo script di sync non è nel repo.
+- ⚠️ La direzione Supabase → Foglio per SOCI era bloccata: Google rispondeva 401 perché il Workspace JESAP non permette Web App aperte a "Chiunque". La soluzione scelta era pubblicare la Web App da un Gmail personale (dettagli in `CONTEXT.md`). Lo stato attuale **va verificato**: in SQL Editor `select status_code, created from net._http_response order by created desc limit 20;` → deve dare 200.
+- `sync/soci_apps_script.js` e `sync/soci_sync.py` sono la versione vecchia (tab sbagliato `SOCI`). Quella buona è `integrations/sheets_supabase_sync/Code.gs`.
+
+**Recruitment (candidature dal sito)**
+- Il form "Join Us" del sito scrive su un Google Sheet. Uno script su quel foglio, ogni 5 minuti, manda le righe nuove a `crm.jesap.it/recruitment/api/candidature/`, protetto dal token `RECRUITMENT_WEBHOOK_TOKEN`.
+- Il CRM salva il candidato nella sessione di recruitment aperta e, se attivo, gli manda l'email di conferma via Resend. Guida: `integrations/recruitment_form_sync/SETUP.md`.
+
+**Email, dominio e posta**
+- `jesap.it` è registrato su **Aruba**, che gestisce il DNS: decide dove punta `crm.jesap.it` e chi è autorizzato a mandare email a nome del dominio.
+- Le caselle `@jesap.it` stanno su **Google Workspace** (ricevono la posta).
+- Il CRM **manda** le email tramite **Resend**, con una chiamata HTTP invece dell'SMTP, che Railway blocca. Per farlo a nome di `@jesap.it`, Resend deve vedere i suoi record nel DNS di Aruba: è proprio il bug della sezione 2.
+
+**Come si lavora sul codice**
+- Si lavora sul fork, su un branch dedicato, e si apre una PR verso `JesapIt/jesap-CRM`. Railway pubblica solo quello che finisce sul branch collegato.
+- In locale: `python manage.py runserver` per avviare il sito, `pytest` per i test (408 test; usano un database in memoria e non toccano mai Supabase).
+
+---
+
 ## 1. Contesto rapido
 
 | Cosa | Dove |
